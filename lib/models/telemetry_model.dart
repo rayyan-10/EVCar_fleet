@@ -135,4 +135,14 @@ class TelemetryRecord {
       tripDistanceKm > 0 ? (energyConsumedKwh * 1000) / tripDistanceKm : 0;
 
   double get socDrop => socStartPct - socEndPct;
+
+  /// running | charging | garage
+  String get vehicleState {
+    if (vehicleActive == 1) return 'running';
+    if (socEndPct > socStartPct) return 'charging';
+    return 'garage';
+  }
+
+  /// Cost proxy: energy cost at ₹8/kWh (standard EV tariff)
+  double get estimatedCostInr => energyConsumedKwh * 8.0;
 }

@@ -165,6 +165,14 @@ class _TelemetryKpiDashboardState extends State<TelemetryKpiDashboard> {
         _KpiStrip(records: _filtered, isDesktop: isDesktop),
         const SizedBox(height: 24),
 
+        // ── Fleet state panel ─────────────────
+        _FleetStatePanel(records: _filtered, isDesktop: isDesktop),
+        const SizedBox(height: 24),
+
+        // ── Expense analysis ──────────────────
+        _ExpensePanel(allRecords: _all, brands: _allBrands, isDesktop: isDesktop),
+        const SizedBox(height: 24),
+
         // ── Charts ────────────────────────────
         if (_compareMode && activeDrivers.length >= 2)
           _ComparisonPanel(
@@ -1550,4 +1558,506 @@ class _Al {
   final String title, driverId, carName, message;
   final Color color;
   const _Al(this.title, this.driverId, this.carName, this.message, this.color);
+}
+
+// ─────────────────────────────────────────────
+// Fleet State Panel  (Running / Charging / Garage)
+// ─────────────────────────────────────────────
+class _FleetStatePanel extends StatefulWidget {
+  final List<TelemetryRecord> records;
+  final bool isDesktop;
+  const _FleetStatePanel({required this.records, required this.isDesktop});
+  @override
+  State<_FleetStatePanel> createState() => _FleetStatePanelState();
+}
+
+class _FleetStatePanelState extends State<_FleetStatePanel> {
+  int _touched = -1;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.records.isEmpty) return const SizedBox.shrink();
+
+    // Per-vehicle latest record only (last timestamp per vehicleId)
+    final latestByVehicle = <String, TelemetryRecord>{};
+    for (final r in widget.records) {
+      final existing = latestByVehicle[r.vehicleId];
+      if (existing == null || r.timestamp.isAfter(existing.timestamp)) {
+        latestByVehicle[r.vehicleId] = r;
+      }
+    }
+    final latest = latestByVehicle.values.toList();
+
+    final running  = latest.where((r) => r.vehicleState == 'running').toList();
+    final charging = latest.where((r) => r.vehicleState == 'charging').toList();
+    final garage   = latest.where((r) => r.vehicleState == 'garage').toList();
+    final total    = latest.length;
+
+    return GlassCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // Header
+        Row(children: [
+          const Icon(Icons.directions_car_rounded, color: AppTheme.primaryBlue, size: 20),
+          const SizedBox(width: 10),
+          const Text('FLEET STATUS  —  REAL-TIME VEHICLE STATE',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5)),
+          const Spacer(),
+          Text('$total vehicles tracked',
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+        ]),
+        const Divider(color: AppTheme.glassBorderColor, height: 16),
+
+        widget.isDesktop
+            ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // Donut
+                SizedBox(width: 220, height: 220,
+                    child: _stateDonut(running.length, charging.length, garage.length, total)),
+                const SizedBox(width: 24),
+                // State cards + vehicle lists
+                Expanded(child: _stateDetail(running, charging, garage)),
+              ])
+            : Column(children: [
+                SizedBox(height: 220,
+                    child: _stateDonut(running.length, charging.length, garage.length, total)),
+                const SizedBox(height: 16),
+                _stateDetail(running, charging, garage),
+              ]),
+      ]),
+    );
+  }
+
+  Widget _stateDonut(int run, int chg, int gar, int total) {
+    if (total == 0) return const SizedBox.shrink();
+    final data = [
+      _SD('Running',  run, const Color(0xFF00E5A0)),
+      _SD('Charging', chg, const Color(0xFFFFB800)),
+      _SD('Garage',   gar, const Color(0xFF8F9BB3)),
+    ];
+
+    return Stack(alignment: Alignment.center, children: [
+      PieChart(PieChartData(
+        pieTouchData: PieTouchData(
+          touchCallback: (e, r) =>
+              setState(() => _touched = r?.touchedSection?.touchedSectionIndex ?? -1),
+        ),
+        sectionsSpace: 4,
+        centerSpaceRadius: 52,
+        sections: data.asMap().entries.map((e) {
+          final touched = e.key == _touched;
+          final pct     = e.value.count / total * 100;
+          return PieChartSectionData(
+            color: e.value.color,
+            value: e.value.count.toDouble(),
+            title: touched
+                ? '${e.value.label}\n${pct.toStringAsFixed(1)}%'
+                : '${pct.toStringAsFixed(0)}%',
+            radius: touched ? 58 : 48,
+            titleStyle: TextStyle(
+                fontSize: touched ? 11 : 9,
+                fontWeight: FontWeight.bold,
+                color: Colors.white),
+          );
+        }).toList(),
+      )),
+      // Centre label
+      Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('$total', style: const TextStyle(
+            fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+        const Text('vehicles', style: TextStyle(
+            fontSize: 10, color: AppTheme.textSecondary)),
+      ]),
+    ]);
+  }
+
+  Widget _stateDetail(
+    List<TelemetryRecord> running,
+    List<TelemetryRecord> charging,
+    List<TelemetryRecord> garage,
+  ) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // 3 summary chips
+      Row(children: [
+        _stateBadge('Running',  running.length,  const Color(0xFF00E5A0), Icons.play_arrow_rounded),
+        const SizedBox(width: 10),
+        _stateBadge('Charging', charging.length, const Color(0xFFFFB800), Icons.battery_charging_full),
+        const SizedBox(width: 10),
+        _stateBadge('Garage',   garage.length,   const Color(0xFF8F9BB3), Icons.garage_outlined),
+      ]),
+      const SizedBox(height: 16),
+
+      // Vehicle lists per state
+      _vehicleList('🟢  RUNNING', running, const Color(0xFF00E5A0)),
+      const SizedBox(height: 12),
+      _vehicleList('🟡  CHARGING', charging, const Color(0xFFFFB800)),
+      const SizedBox(height: 12),
+      _vehicleList('⚫  GARAGE / IDLE', garage, const Color(0xFF8F9BB3)),
+    ]);
+  }
+
+  Widget _stateBadge(String label, int count, Color color, IconData icon) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Row(children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('$count', style: TextStyle(
+                color: color, fontSize: 22, fontWeight: FontWeight.bold)),
+            Text(label, style: const TextStyle(
+                color: AppTheme.textSecondary, fontSize: 10, fontWeight: FontWeight.bold)),
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  Widget _vehicleList(String title, List<TelemetryRecord> recs, Color color) {
+    if (recs.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(title, style: TextStyle(
+          color: color, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+      const SizedBox(height: 6),
+      Wrap(spacing: 8, runSpacing: 6,
+        children: recs.map((r) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withOpacity(0.2)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(r.vehicleId, style: TextStyle(
+                color: color, fontWeight: FontWeight.bold, fontSize: 11)),
+            Text('${r.driverId} · ${r.carName}',
+                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 10)),
+            Text('SOC: ${r.socEndPct.toStringAsFixed(0)}%  |  ${r.brand}',
+                style: const TextStyle(color: Colors.white60, fontSize: 9)),
+          ]),
+        )).toList(),
+      ),
+    ]);
+  }
+}
+
+class _SD {
+  final String label;
+  final int count;
+  final Color color;
+  const _SD(this.label, this.count, this.color);
+}
+
+// ─────────────────────────────────────────────
+// Expense Analysis Panel  (last 1/2/3 months, brand filter)
+// ─────────────────────────────────────────────
+class _ExpensePanel extends StatefulWidget {
+  final List<TelemetryRecord> allRecords;
+  final List<String> brands;
+  final bool isDesktop;
+  const _ExpensePanel({
+    required this.allRecords,
+    required this.brands,
+    required this.isDesktop,
+  });
+  @override
+  State<_ExpensePanel> createState() => _ExpensePanelState();
+}
+
+class _ExpensePanelState extends State<_ExpensePanel> {
+  int    _months     = 3;   // 1 / 2 / 3
+  String? _brand;           // null = all
+  int    _touched    = -1;
+
+  List<TelemetryRecord> get _filtered {
+    final cutoff = widget.allRecords
+        .map((r) => r.timestamp)
+        .reduce((a, b) => a.isAfter(b) ? a : b)
+        .subtract(Duration(days: _months * 30));
+
+    return widget.allRecords.where((r) {
+      if (r.timestamp.isBefore(cutoff)) return false;
+      if (_brand != null && r.brand != _brand) return false;
+      return true;
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final recs = _filtered;
+
+    // Weekly buckets
+    final DateTime maxTs = widget.allRecords
+        .map((r) => r.timestamp)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+    final DateTime minTs = maxTs.subtract(Duration(days: _months * 30));
+
+    final weekMap   = <int, double>{};   // week index → total cost ₹
+    final brandMap  = <String, double>{}; // brand → total cost ₹
+    double totalCost = 0;
+
+    for (final r in recs) {
+      final cost  = r.estimatedCostInr;
+      final week  = r.timestamp.difference(minTs).inDays ~/ 7;
+      weekMap[week]  = (weekMap[week]  ?? 0) + cost;
+      brandMap[r.brand] = (brandMap[r.brand] ?? 0) + cost;
+      totalCost += cost;
+    }
+
+    final weeks  = weekMap.keys.toList()..sort();
+    final spots  = weeks.map((w) => FlSpot(w.toDouble(), weekMap[w]! / 1000)).toList();
+    final brands = brandMap.keys.toList()..sort();
+    final brandColors = [AppTheme.primaryBlue, const Color(0xFF00E5A0), const Color(0xFFFFB800)];
+
+    return GlassCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // ── Header ──
+        Row(children: [
+          const Icon(Icons.receipt_long_rounded, color: Colors.amberAccent, size: 20),
+          const SizedBox(width: 10),
+          const Text('EXPENSE ANALYSIS  —  ENERGY COST (₹8 / kWh)',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5)),
+          const Spacer(),
+          // Month selector
+          ...([1, 2, 3].map((m) => Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: _ToggleChip(
+              label: '$m Mo',
+              active: _months == m,
+              activeColor: Colors.amberAccent,
+              onTap: () => setState(() { _months = m; _touched = -1; }),
+            ),
+          ))),
+        ]),
+
+        // Brand filter row
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 6,
+          children: [
+            _ToggleChip(
+              label: 'All Brands',
+              active: _brand == null,
+              activeColor: Colors.amberAccent,
+              onTap: () => setState(() { _brand = null; _touched = -1; }),
+            ),
+            ...widget.brands.asMap().entries.map((e) => _ToggleChip(
+              label: e.value,
+              active: _brand == e.value,
+              activeColor: brandColors[e.key % brandColors.length],
+              onTap: () => setState(() {
+                _brand = (_brand == e.value) ? null : e.value;
+                _touched = -1;
+              }),
+            )),
+          ],
+        ),
+        const Divider(color: AppTheme.glassBorderColor, height: 20),
+
+        // ── Summary row ──
+        widget.isDesktop
+            ? Row(children: [
+                _expenseStat('Total Cost',       '₹${_fmtK(totalCost)}',   Colors.amberAccent),
+                const SizedBox(width: 20),
+                _expenseStat('Total Trips',       '${recs.length}',          AppTheme.primaryBlue),
+                const SizedBox(width: 20),
+                _expenseStat('Avg Cost / Trip',
+                    recs.isNotEmpty ? '₹${_fmtK(totalCost / recs.length)}' : '–',
+                    const Color(0xFF00E5A0)),
+                const SizedBox(width: 20),
+                _expenseStat('Energy Consumed',
+                    '${_fmtK(recs.fold(0.0, (s, r) => s + r.energyConsumedKwh))} kWh',
+                    Colors.tealAccent),
+              ])
+            : Wrap(spacing: 16, runSpacing: 10, children: [
+                _expenseStat('Total Cost',    '₹${_fmtK(totalCost)}',   Colors.amberAccent),
+                _expenseStat('Total Trips',    '${recs.length}',          AppTheme.primaryBlue),
+                _expenseStat('Avg / Trip',
+                    recs.isNotEmpty ? '₹${_fmtK(totalCost / recs.length)}' : '–',
+                    const Color(0xFF00E5A0)),
+              ]),
+
+        const SizedBox(height: 20),
+
+        // ── Weekly cost trend line ──
+        if (spots.length >= 2) ...[
+          const Text('WEEKLY COST TREND',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 10,
+                  fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 180,
+            child: LineChart(LineChartData(
+              lineBarsData: [
+                LineChartBarData(
+                  spots: spots,
+                  color: Colors.amberAccent,
+                  isCurved: true,
+                  barWidth: 2.5,
+                  dotData: FlDotData(
+                    show: true,
+                    getDotPainter: (_, __, ___, ____) =>
+                        FlDotCirclePainter(radius: 4, color: Colors.amberAccent,
+                            strokeColor: Colors.amberAccent.withOpacity(0.3), strokeWidth: 6),
+                  ),
+                  belowBarData: BarAreaData(
+                    show: true,
+                    gradient: LinearGradient(
+                      colors: [Colors.amberAccent.withOpacity(0.2), Colors.amberAccent.withOpacity(0.0)],
+                      begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                    ),
+                  ),
+                ),
+              ],
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(sideTitles: SideTitles(
+                  showTitles: true, reservedSize: 42,
+                  getTitlesWidget: (v, _) => Text('₹${v.toStringAsFixed(0)}K',
+                      style: const TextStyle(fontSize: 9, color: AppTheme.textSecondary)),
+                )),
+                bottomTitles: AxisTitles(sideTitles: SideTitles(
+                  showTitles: true,
+                  getTitlesWidget: (v, _) {
+                    final date = minTs.add(Duration(days: v.toInt() * 7));
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text('${date.day}/${date.month}',
+                          style: const TextStyle(fontSize: 9, color: AppTheme.textSecondary)),
+                    );
+                  },
+                )),
+                topTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              ),
+              gridData: FlGridData(show: true, drawVerticalLine: false,
+                  getDrawingHorizontalLine: (_) =>
+                      FlLine(color: Colors.white.withOpacity(0.04), strokeWidth: 1)),
+              borderData: FlBorderData(show: false),
+              lineTouchData: LineTouchData(
+                touchTooltipData: LineTouchTooltipData(
+                  tooltipRoundedRadius: 8,
+                  getTooltipItems: (ss) => ss.map((s) => LineTooltipItem(
+                    '₹${s.y.toStringAsFixed(1)}K',
+                    const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                  )).toList(),
+                ),
+              ),
+            )),
+          ),
+          const SizedBox(height: 20),
+        ],
+
+        // ── Brand cost breakdown bar ──
+        if (brands.length > 1) ...[
+          const Text('COST BY BRAND',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 10,
+                  fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 160,
+            child: BarChart(BarChartData(
+              barTouchData: BarTouchData(
+                touchTooltipData: BarTouchTooltipData(
+                  tooltipRoundedRadius: 8,
+                  getTooltipItem: (g, _, rod, __) => BarTooltipItem(
+                    '${brands[g.x]}\n₹${rod.toY.toStringAsFixed(1)}K',
+                    const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                ),
+                touchCallback: (e, r) =>
+                    setState(() => _touched = r?.spot?.touchedBarGroupIndex ?? -1),
+              ),
+              barGroups: brands.asMap().entries.map((e) {
+                final cost    = (brandMap[e.value] ?? 0) / 1000;
+                final color   = brandColors[e.key % brandColors.length];
+                final touched = e.key == _touched;
+                return BarChartGroupData(x: e.key, barRods: [
+                  BarChartRodData(
+                    toY: cost, width: touched ? 36 : 28,
+                    gradient: LinearGradient(
+                      colors: [color.withOpacity(0.4), color],
+                      begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                    ),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                    backDrawRodData: BackgroundBarChartRodData(
+                      show: true,
+                      toY: (brandMap.values.reduce((a, b) => a > b ? a : b) / 1000) * 1.15,
+                      color: Colors.white.withOpacity(0.02),
+                    ),
+                  ),
+                ]);
+              }).toList(),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(sideTitles: SideTitles(
+                  showTitles: true, reservedSize: 42,
+                  getTitlesWidget: (v, _) => Text('₹${v.toStringAsFixed(0)}K',
+                      style: const TextStyle(fontSize: 9, color: AppTheme.textSecondary)),
+                )),
+                bottomTitles: AxisTitles(sideTitles: SideTitles(
+                  showTitles: true,
+                  getTitlesWidget: (v, _) {
+                    final idx = v.toInt();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(idx < brands.length ? brands[idx] : '',
+                          style: const TextStyle(fontSize: 11, color: Colors.white,
+                              fontWeight: FontWeight.bold)),
+                    );
+                  },
+                )),
+                topTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              ),
+              gridData: FlGridData(show: true, drawVerticalLine: false,
+                  getDrawingHorizontalLine: (_) =>
+                      FlLine(color: Colors.white.withOpacity(0.04), strokeWidth: 1)),
+              borderData: FlBorderData(show: false),
+            )),
+          ),
+          const SizedBox(height: 16),
+          // Brand cost legend pills
+          Wrap(spacing: 10, runSpacing: 6,
+            children: brands.asMap().entries.map((e) {
+              final cost  = brandMap[e.value] ?? 0;
+              final color = brandColors[e.key % brandColors.length];
+              final pct   = totalCost > 0 ? cost / totalCost * 100 : 0;
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: color.withOpacity(0.3)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 8, height: 8,
+                      decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                  const SizedBox(width: 6),
+                  Text('${e.value}  ₹${_fmtK(cost)}  (${pct.toStringAsFixed(1)}%)',
+                      style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11)),
+                ]),
+              );
+            }).toList(),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _expenseStat(String label, String value, Color color) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(
+          color: AppTheme.textSecondary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.3)),
+      const SizedBox(height: 4),
+      Text(value, style: TextStyle(
+          color: color, fontSize: 20, fontWeight: FontWeight.bold)),
+    ]);
+  }
+
+  String _fmtK(double v) {
+    if (v >= 1e6) return '${(v / 1e6).toStringAsFixed(2)}M';
+    if (v >= 1e3) return '${(v / 1e3).toStringAsFixed(1)}K';
+    return v.toStringAsFixed(0);
+  }
 }
