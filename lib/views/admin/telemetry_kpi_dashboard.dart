@@ -173,6 +173,14 @@ class _TelemetryKpiDashboardState extends State<TelemetryKpiDashboard> {
         _ExpensePanel(allRecords: _all, brands: _allBrands, isDesktop: isDesktop),
         const SizedBox(height: 24),
 
+        // ── Overspeed violations insight ──────
+        _OverspeedInsightPanel(records: _filtered, allDrivers: _allDrivers, isDesktop: isDesktop),
+        const SizedBox(height: 24),
+
+        // ── Income ranking insight ─────────────
+        _IncomeRankingPanel(records: _filtered, allDrivers: _allDrivers, isDesktop: isDesktop),
+        const SizedBox(height: 24),
+
         // ── Charts ────────────────────────────
         if (_compareMode && activeDrivers.length >= 2)
           _ComparisonPanel(
@@ -2060,4 +2068,590 @@ class _ExpensePanelState extends State<_ExpensePanel> {
     if (v >= 1e3) return '${(v / 1e3).toStringAsFixed(1)}K';
     return v.toStringAsFixed(0);
   }
+}
+
+// ─────────────────────────────────────────────
+// Overspeed Violations Insight Panel
+// ─────────────────────────────────────────────
+class _OverspeedInsightPanel extends StatefulWidget {
+  final List<TelemetryRecord> records;
+  final List<String> allDrivers;
+  final bool isDesktop;
+  const _OverspeedInsightPanel({
+    required this.records,
+    required this.allDrivers,
+    required this.isDesktop,
+  });
+  @override
+  State<_OverspeedInsightPanel> createState() => _OverspeedInsightPanelState();
+}
+
+class _OverspeedInsightPanelState extends State<_OverspeedInsightPanel> {
+  int _touched = -1;
+
+  // Risk tier thresholds
+  static const int _criticalThresh = 2000;
+  static const int _highThresh     = 500;
+  static const int _medThresh      = 100;
+
+  Color _tierColor(int count) {
+    if (count >= _criticalThresh) return Colors.redAccent;
+    if (count >= _highThresh)     return Colors.orangeAccent;
+    if (count >= _medThresh)      return Colors.amberAccent;
+    return Colors.greenAccent;
+  }
+
+  String _tierLabel(int count) {
+    if (count >= _criticalThresh) return 'CRITICAL';
+    if (count >= _highThresh)     return 'HIGH';
+    if (count >= _medThresh)      return 'MEDIUM';
+    return 'SAFE';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.records.isEmpty) return const SizedBox.shrink();
+
+    // Aggregate per driver
+    final drivers = widget.records.map((r) => r.driverId).toSet().toList()..sort();
+    final data = drivers.map((id) {
+      final recs  = widget.records.where((r) => r.driverId == id).toList();
+      final count = recs.fold(0, (s, r) => s + r.overspeedEvents);
+      final car   = recs.first.carName;
+      final maxSpd = recs.map((r) => r.maxSpeedKmph).reduce((a, b) => a > b ? a : b);
+      final avgSpd = recs.map((r) => r.avgSpeedKmph).reduce((a, b) => a + b) / recs.length;
+      return _OvRow(driverId: id, carName: car, count: count,
+          maxSpeed: maxSpd, avgSpeed: avgSpd);
+    }).toList()
+      ..sort((a, b) => b.count.compareTo(a.count)); // descending
+
+    final maxCount = data.first.count;
+    final totalViolations = data.fold(0, (s, r) => s + r.count);
+    final criticalCount   = data.where((r) => r.count >= _criticalThresh).length;
+    final highCount       = data.where((r) => r.count >= _highThresh && r.count < _criticalThresh).length;
+
+    return GlassCard(
+      borderColor: Colors.redAccent.withOpacity(0.25),
+      gradientColors: [Colors.redAccent.withOpacity(0.04), Colors.transparent],
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+
+        // ── Header ────────────────────────────────────────────
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.redAccent.withOpacity(0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.speed_rounded, color: Colors.redAccent, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('OVERSPEED VIOLATIONS  —  ALL VEHICLES',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13,
+                    letterSpacing: 0.5, color: Colors.white)),
+            const Text('Ranked by total violation count · tap bar to inspect',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+          ]),
+          const Spacer(),
+          // Summary badges
+          _badge('$totalViolations', 'Total', Colors.redAccent),
+          const SizedBox(width: 8),
+          _badge('$criticalCount', 'Critical', Colors.redAccent),
+          const SizedBox(width: 8),
+          _badge('$highCount', 'High', Colors.orangeAccent),
+        ]),
+        const Divider(color: AppTheme.glassBorderColor, height: 20),
+
+        // ── Risk tier legend ──────────────────────────────────
+        Wrap(spacing: 16, runSpacing: 6, children: [
+          _tierLegend('CRITICAL  ≥ 2000', Colors.redAccent),
+          _tierLegend('HIGH  ≥ 500',      Colors.orangeAccent),
+          _tierLegend('MEDIUM  ≥ 100',    Colors.amberAccent),
+          _tierLegend('SAFE  < 100',      Colors.greenAccent),
+        ]),
+        const SizedBox(height: 20),
+
+        // ── Bar chart ─────────────────────────────────────────
+        SizedBox(
+          height: widget.isDesktop ? 260 : 220,
+          child: BarChart(BarChartData(
+            barTouchData: BarTouchData(
+              touchTooltipData: BarTouchTooltipData(
+                tooltipRoundedRadius: 8,
+                getTooltipItem: (g, _, rod, __) {
+                  final r = data[g.x];
+                  return BarTooltipItem(
+                    '${r.driverId}  ·  ${r.carName}\n'
+                    'Violations: ${r.count}\n'
+                    'Max Speed: ${r.maxSpeed.toStringAsFixed(0)} km/h\n'
+                    'Risk: ${_tierLabel(r.count)}',
+                    const TextStyle(color: Colors.white, fontSize: 11,
+                        fontWeight: FontWeight.bold, height: 1.5),
+                  );
+                },
+              ),
+              touchCallback: (e, r) =>
+                  setState(() => _touched = r?.spot?.touchedBarGroupIndex ?? -1),
+            ),
+            barGroups: List.generate(data.length, (i) {
+              final r       = data[i];
+              final color   = _tierColor(r.count);
+              final touched = i == _touched;
+              return BarChartGroupData(x: i, barRods: [
+                BarChartRodData(
+                  toY: r.count.toDouble(),
+                  width: touched ? 26 : 20,
+                  gradient: LinearGradient(
+                    colors: [color.withOpacity(0.35), color],
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                  ),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                  backDrawRodData: BackgroundBarChartRodData(
+                    show: true,
+                    toY: maxCount * 1.12,
+                    color: Colors.white.withOpacity(0.02),
+                  ),
+                ),
+              ]);
+            }),
+            titlesData: FlTitlesData(
+              leftTitles: AxisTitles(sideTitles: SideTitles(
+                showTitles: true, reservedSize: 44,
+                getTitlesWidget: (v, _) => Text(
+                  v >= 1000 ? '${(v / 1000).toStringAsFixed(0)}K' : v.toStringAsFixed(0),
+                  style: const TextStyle(fontSize: 9, color: AppTheme.textSecondary)),
+              )),
+              bottomTitles: AxisTitles(sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (v, _) {
+                  final idx = v.toInt();
+                  if (idx < 0 || idx >= data.length) return const Text('');
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(data[idx].driverId,
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: _tierColor(data[idx].count),
+                          fontWeight: FontWeight.bold,
+                        )),
+                  );
+                },
+              )),
+              topTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            ),
+            gridData: FlGridData(
+              show: true, drawVerticalLine: false,
+              getDrawingHorizontalLine: (_) =>
+                  FlLine(color: Colors.white.withOpacity(0.04), strokeWidth: 1),
+            ),
+            borderData: FlBorderData(show: false),
+          )),
+        ),
+        const SizedBox(height: 20),
+
+        // ── Per-driver detail rows ────────────────────────────
+        ...data.asMap().entries.map((e) => _driverRow(e.key + 1, e.value, maxCount)),
+      ]),
+    );
+  }
+
+  Widget _driverRow(int rank, _OvRow r, int maxCount) {
+    final color = _tierColor(r.count);
+    final pct   = maxCount > 0 ? r.count / maxCount : 0.0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(10),
+        border: Border(left: BorderSide(color: color, width: 3)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          // Rank
+          Container(
+            width: 24, height: 24,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              shape: BoxShape.circle,
+              border: Border.all(color: color.withOpacity(0.4)),
+            ),
+            child: Center(child: Text('#$rank',
+                style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold))),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${r.driverId}  ·  ${r.carName}',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+            Text(
+              'Max speed: ${r.maxSpeed.toStringAsFixed(0)} km/h  ·  '
+              'Avg speed: ${r.avgSpeed.toStringAsFixed(1)} km/h',
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 10),
+            ),
+          ])),
+          // Count + tier chip
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('${r.count}', style: TextStyle(
+                color: color, fontWeight: FontWeight.bold, fontSize: 18)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: color.withOpacity(0.35)),
+              ),
+              child: Text(_tierLabel(r.count),
+                  style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+            ),
+          ]),
+        ]),
+        const SizedBox(height: 8),
+        // Progress bar relative to top violator
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: pct,
+            minHeight: 5,
+            backgroundColor: Colors.white.withOpacity(0.04),
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _badge(String value, String label, Color color) {
+    return Column(children: [
+      Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
+      Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 9)),
+    ]);
+  }
+
+  Widget _tierLegend(String label, Color color) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(width: 10, height: 10,
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+      const SizedBox(width: 5),
+      Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
+    ]);
+  }
+}
+
+class _OvRow {
+  final String driverId, carName;
+  final int count;
+  final double maxSpeed, avgSpeed;
+  const _OvRow({required this.driverId, required this.carName, required this.count,
+      required this.maxSpeed, required this.avgSpeed});
+}
+
+// ─────────────────────────────────────────────
+// Income Ranking Insight Panel
+// ─────────────────────────────────────────────
+class _IncomeRankingPanel extends StatefulWidget {
+  final List<TelemetryRecord> records;
+  final List<String> allDrivers;
+  final bool isDesktop;
+  const _IncomeRankingPanel({
+    required this.records,
+    required this.allDrivers,
+    required this.isDesktop,
+  });
+  @override
+  State<_IncomeRankingPanel> createState() => _IncomeRankingPanelState();
+}
+
+class _IncomeRankingPanelState extends State<_IncomeRankingPanel> {
+  int _touched = -1;
+
+  String _fmtK(double v) {
+    if (v >= 1e6) return '${(v / 1e6).toStringAsFixed(2)}M';
+    if (v >= 1e3) return '${(v / 1e3).toStringAsFixed(1)}K';
+    return v.toStringAsFixed(0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.records.isEmpty) return const SizedBox.shrink();
+
+    // Aggregate per driver, descending by income
+    final drivers = widget.records.map((r) => r.driverId).toSet().toList();
+    final data = drivers.map((id) {
+      final recs     = widget.records.where((r) => r.driverId == id).toList();
+      final income   = recs.fold(0.0, (s, r) => s + r.incomeGenerated);
+      final trips    = recs.length;
+      final dist     = recs.fold(0.0, (s, r) => s + r.tripDistanceKm);
+      final energy   = recs.fold(0.0, (s, r) => s + r.energyConsumedKwh);
+      final avgSpeed = recs.map((r) => r.avgSpeedKmph).reduce((a, b) => a + b) / recs.length;
+      final car      = recs.first.carName;
+      final brand    = recs.first.brand;
+      return _IncRow(driverId: id, carName: car, brand: brand, income: income,
+          trips: trips, distKm: dist, energyKwh: energy, avgSpeed: avgSpeed);
+    }).toList()
+      ..sort((a, b) => b.income.compareTo(a.income));
+
+    final totalIncome = data.fold(0.0, (s, r) => s + r.income);
+    final topEarner   = data.first;
+    final avgIncome   = totalIncome / data.length;
+    final maxIncome   = topEarner.income;
+
+    // Colours — top 3 get gold/silver/bronze, rest get driver palette
+    Color _rankColor(int rank) {
+      if (rank == 0) return const Color(0xFFFFD700); // gold
+      if (rank == 1) return const Color(0xFFC0C0C0); // silver
+      if (rank == 2) return const Color(0xFFCD7F32); // bronze
+      return _driverColor(data[rank].driverId, widget.allDrivers);
+    }
+
+    return GlassCard(
+      borderColor: Colors.greenAccent.withOpacity(0.2),
+      gradientColors: [Colors.greenAccent.withOpacity(0.03), Colors.transparent],
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+
+        // ── Header ──────────────────────────────────────────
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.greenAccent.withOpacity(0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.emoji_events_rounded, color: Colors.greenAccent, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('VEHICLE INCOME RANKING  —  DESCENDING ORDER',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13,
+                    letterSpacing: 0.5, color: Colors.white)),
+            const Text('Total earnings per vehicle · tap bar for full details',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+          ]),
+          const Spacer(),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('₹${_fmtK(totalIncome)}',
+                style: const TextStyle(color: Colors.greenAccent,
+                    fontWeight: FontWeight.bold, fontSize: 18)),
+            const Text('Fleet Total', style: TextStyle(
+                color: AppTheme.textSecondary, fontSize: 10)),
+          ]),
+        ]),
+        const Divider(color: AppTheme.glassBorderColor, height: 20),
+
+        // ── Top 3 podium summary ─────────────────────────────
+        Row(children: [
+          // 2nd place
+          if (data.length >= 2) Expanded(child: _podiumCard(1, data[1], _rankColor(1))),
+          const SizedBox(width: 10),
+          // 1st place (taller)
+          Expanded(child: _podiumCard(0, data[0], _rankColor(0), tall: true)),
+          const SizedBox(width: 10),
+          // 3rd place
+          if (data.length >= 3) Expanded(child: _podiumCard(2, data[2], _rankColor(2))),
+        ]),
+        const SizedBox(height: 20),
+
+        // ── Bar chart ────────────────────────────────────────
+        SizedBox(
+          height: widget.isDesktop ? 260 : 220,
+          child: BarChart(BarChartData(
+            barTouchData: BarTouchData(
+              touchTooltipData: BarTouchTooltipData(
+                tooltipRoundedRadius: 8,
+                getTooltipItem: (g, _, rod, __) {
+                  final r   = data[g.x];
+                  final pct = totalIncome > 0 ? (r.income / totalIncome * 100) : 0;
+                  return BarTooltipItem(
+                    '${r.driverId}  ·  ${r.carName}\n'
+                    '₹${_fmtK(r.income)}\n'
+                    '${pct.toStringAsFixed(1)}% of fleet\n'
+                    '${r.trips} trips',
+                    const TextStyle(color: Colors.white, fontSize: 11,
+                        fontWeight: FontWeight.bold, height: 1.5),
+                  );
+                },
+              ),
+              touchCallback: (e, r) =>
+                  setState(() => _touched = r?.spot?.touchedBarGroupIndex ?? -1),
+            ),
+            barGroups: List.generate(data.length, (i) {
+              final color   = _rankColor(i);
+              final touched = i == _touched;
+              return BarChartGroupData(x: i, barRods: [
+                BarChartRodData(
+                  toY: data[i].income / 1000,
+                  width: touched ? 26 : 20,
+                  gradient: LinearGradient(
+                    colors: [color.withOpacity(0.35), color],
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                  ),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                  backDrawRodData: BackgroundBarChartRodData(
+                    show: true,
+                    toY: maxIncome / 1000 * 1.12,
+                    color: Colors.white.withOpacity(0.02),
+                  ),
+                ),
+              ]);
+            }),
+            titlesData: FlTitlesData(
+              leftTitles: AxisTitles(sideTitles: SideTitles(
+                showTitles: true, reservedSize: 44,
+                getTitlesWidget: (v, _) => Text('₹${v.toStringAsFixed(0)}K',
+                    style: const TextStyle(fontSize: 9, color: AppTheme.textSecondary)),
+              )),
+              bottomTitles: AxisTitles(sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (v, _) {
+                  final idx = v.toInt();
+                  if (idx < 0 || idx >= data.length) return const Text('');
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(data[idx].driverId,
+                        style: TextStyle(fontSize: 9,
+                            color: _rankColor(idx),
+                            fontWeight: FontWeight.bold)),
+                  );
+                },
+              )),
+              topTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            ),
+            gridData: FlGridData(
+              show: true, drawVerticalLine: false,
+              getDrawingHorizontalLine: (_) =>
+                  FlLine(color: Colors.white.withOpacity(0.04), strokeWidth: 1),
+            ),
+            borderData: FlBorderData(show: false),
+          )),
+        ),
+        const SizedBox(height: 8),
+        // Average line annotation text
+        Row(children: [
+          Container(width: 20, height: 2,
+              decoration: const BoxDecoration(color: Colors.white30)),
+          const SizedBox(width: 6),
+          Text('Fleet avg: ₹${_fmtK(avgIncome)}',
+              style: const TextStyle(color: Colors.white54, fontSize: 10)),
+        ]),
+        const SizedBox(height: 20),
+
+        // ── Full ranked list with progress bars ──────────────
+        ...data.asMap().entries.map((e) => _rankRow(e.key, e.value, maxIncome,
+            totalIncome, _rankColor(e.key))),
+      ]),
+    );
+  }
+
+  Widget _podiumCard(int rank, _IncRow r, Color color, {bool tall = false}) {
+    final medals = ['🥇', '🥈', '🥉'];
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      padding: const EdgeInsets.all(12),
+      margin: tall ? const EdgeInsets.only(bottom: 0) : const EdgeInsets.only(top: 16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Column(children: [
+        Text(medals[rank], style: const TextStyle(fontSize: 22)),
+        const SizedBox(height: 6),
+        Text(r.driverId, style: TextStyle(
+            color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+        Text(r.carName, style: const TextStyle(
+            color: AppTheme.textSecondary, fontSize: 9),
+            textAlign: TextAlign.center, overflow: TextOverflow.ellipsis),
+        const SizedBox(height: 6),
+        Text('₹${_fmtK(r.income)}', style: TextStyle(
+            color: color, fontWeight: FontWeight.bold, fontSize: 15)),
+        Text('${r.trips} trips', style: const TextStyle(
+            color: AppTheme.textSecondary, fontSize: 9)),
+      ]),
+    );
+  }
+
+  Widget _rankRow(int rank, _IncRow r, double maxIncome,
+      double totalIncome, Color color) {
+    final pctOfMax   = maxIncome > 0 ? r.income / maxIncome : 0.0;
+    final pctOfFleet = totalIncome > 0 ? r.income / totalIncome * 100 : 0.0;
+    final incPerKm   = r.distKm > 0 ? r.income / r.distKm : 0.0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(10),
+        border: Border(left: BorderSide(color: color, width: 3)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          // Rank number
+          Container(
+            width: 26, height: 26,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              shape: BoxShape.circle,
+              border: Border.all(color: color.withOpacity(0.4)),
+            ),
+            child: Center(child: Text('#${rank + 1}',
+                style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold))),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${r.driverId}  ·  ${r.carName}',
+                style: const TextStyle(color: Colors.white,
+                    fontWeight: FontWeight.bold, fontSize: 12)),
+            Text('${r.brand}  ·  ${r.trips} trips  ·  '
+                '${_fmtK(r.distKm)} km  ·  '
+                '₹${incPerKm.toStringAsFixed(1)}/km',
+                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 10)),
+          ])),
+          // Income + fleet share
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('₹${_fmtK(r.income)}', style: TextStyle(
+                color: color, fontWeight: FontWeight.bold, fontSize: 16)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text('${pctOfFleet.toStringAsFixed(1)}% of fleet',
+                  style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+            ),
+          ]),
+        ]),
+        const SizedBox(height: 8),
+        // Progress bar relative to top earner
+        Stack(children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: pctOfMax,
+              minHeight: 6,
+              backgroundColor: Colors.white.withOpacity(0.04),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+}
+
+class _IncRow {
+  final String driverId, carName, brand;
+  final double income, distKm, energyKwh, avgSpeed;
+  final int trips;
+  const _IncRow({
+    required this.driverId, required this.carName, required this.brand,
+    required this.income, required this.trips, required this.distKm,
+    required this.energyKwh, required this.avgSpeed,
+  });
 }

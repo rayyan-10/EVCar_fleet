@@ -11,6 +11,8 @@ import '../widgets/web_helper_non_web.dart'
     if (dart.library.html) '../widgets/web_helper_web.dart' as web_helper;
 import 'onboarding_screen.dart';
 
+import 'driver_analytics_screen.dart';
+
 class DriverDashboard extends StatefulWidget {
   const DriverDashboard({Key? key}) : super(key: key);
 
@@ -353,7 +355,7 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
                               title: 'Predict Range',
                               description: 'Trigger the physics simulation engine to output 20 range metrics.',
                               icon: Icons.psychology_rounded,
-                              onTap: _triggerPrediction,
+                              onTap: () => Navigator.pushNamed(context, AppRoutes.predictInput),
                               highlight: true,
                             ),
                             _buildQuickActionCard(
@@ -369,6 +371,13 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
                               description: 'Export a copy of current telemetry parameters and range logs.',
                               icon: Icons.file_download_outlined,
                               onTap: _downloadDriverReport,
+                            ),
+                            _buildQuickActionCard(
+                              title: 'My Analytics',
+                              description: 'View trip charts, safety score, income trends and battery health.',
+                              icon: Icons.bar_chart_rounded,
+                              onTap: () => Navigator.push(context,
+                                  MaterialPageRoute(builder: (_) => const DriverAnalyticsScreen())),
                             ),
                           ],
                         ),

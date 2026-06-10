@@ -4,6 +4,7 @@ import '../views/auth/role_selection_screen.dart';
 import '../views/auth/login_screen.dart';
 import '../views/driver/onboarding_screen.dart';
 import '../views/driver/driver_dashboard.dart';
+import '../views/driver/predict_input_screen.dart';
 import '../views/driver/prediction_result_screen.dart';
 import '../views/driver/history_screen.dart';
 import '../views/admin/admin_dashboard.dart';
@@ -14,6 +15,7 @@ class AppRoutes {
   static const String login = '/login';
   static const String onboarding = '/onboarding';
   static const String driverDashboard = '/driver/dashboard';
+  static const String predictInput = '/driver/predict-input';
   static const String predictionResult = '/driver/prediction';
   static const String driverHistory = '/driver/history';
   static const String adminDashboard = '/admin/dashboard';
@@ -54,6 +56,9 @@ class AppRoutes {
           case driverDashboard:
             return guardRoute(const DriverDashboard(), 'driver');
             
+          case predictInput:
+            return guardRoute(const PredictInputScreen(), 'driver');
+
           case predictionResult:
             return guardRoute(const PredictionResultScreen(), 'driver');
             
