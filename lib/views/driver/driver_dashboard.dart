@@ -10,7 +10,6 @@ import '../widgets/glass_widgets.dart';
 import '../widgets/web_helper_non_web.dart'
     if (dart.library.html) '../widgets/web_helper_web.dart' as web_helper;
 import 'onboarding_screen.dart';
-
 import 'driver_analytics_screen.dart';
 
 class DriverDashboard extends StatefulWidget {
@@ -20,10 +19,12 @@ class DriverDashboard extends StatefulWidget {
   State<DriverDashboard> createState() => _DriverDashboardState();
 }
 
-class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProviderStateMixin {
+class _DriverDashboardState extends State<DriverDashboard>
+    with SingleTickerProviderStateMixin {
   bool _isPredicting = false;
   String _predictionStatusText = '';
   late AnimationController _animationController;
+  int _selectedNav = 0; // 0=Dashboard, 1=Analytics, 2=History
 
   @override
   void initState() {
@@ -32,8 +33,6 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
       vsync: this,
       duration: const Duration(seconds: 3),
     );
-
-    // Fetch predictions history on startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = Provider.of<AuthController>(context, listen: false);
       if (auth.currentUser != null) {
@@ -49,41 +48,30 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
     super.dispose();
   }
 
-  // AI Prediction loading sequences
   Future<void> _triggerPrediction() async {
     final driverCtrl = Provider.of<DriverController>(context, listen: false);
     final predCtrl = Provider.of<PredictionController>(context, listen: false);
-    
     if (driverCtrl.currentVehicle == null) return;
-    
+
     setState(() {
       _isPredicting = true;
       _predictionStatusText = 'Establishing telemetry link...';
     });
     _animationController.repeat();
 
-    // Sequence of loader phrases for maximum wow factor
     await Future.delayed(const Duration(milliseconds: 700));
     if (!mounted) return;
     setState(() => _predictionStatusText = 'Evaluating aerodynamic drag coefficients...');
-    
     await Future.delayed(const Duration(milliseconds: 700));
     if (!mounted) return;
     setState(() => _predictionStatusText = 'Analyzing battery thermal pack temperatures...');
-    
     await Future.delayed(const Duration(milliseconds: 700));
     if (!mounted) return;
     setState(() => _predictionStatusText = 'Running AI physical regression range models...');
 
-    // Run prediction
-    final success = await predCtrl.runPrediction(
-      driverCtrl.currentVehicle!,
-      100.0, // Default start at 100% capacity range calculation
-    );
-
+    final success = await predCtrl.runPrediction(driverCtrl.currentVehicle!, 100.0);
     await Future.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
-
     setState(() {
       _isPredicting = false;
       _animationController.stop();
@@ -92,54 +80,31 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
     if (success) {
       Navigator.pushNamed(context, AppRoutes.predictionResult);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(predCtrl.errorMessage ?? 'Prediction failed.'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(predCtrl.errorMessage ?? 'Prediction failed.'),
+        backgroundColor: AppTheme.criticalRed,
+      ));
     }
   }
 
   void _downloadDriverReport() {
     final vehicle = Provider.of<DriverController>(context, listen: false).currentVehicle;
     final predCtrl = Provider.of<PredictionController>(context, listen: false);
-    
     if (vehicle == null) return;
-
     final latestPred = predCtrl.history.isNotEmpty ? predCtrl.history.first : null;
-
     final buffer = StringBuffer();
     buffer.writeln('====================================================');
     buffer.writeln('          DRIVE ANALYSIS VEHICLE REPORT             ');
     buffer.writeln('====================================================');
     buffer.writeln('Driver Name: ${vehicle.driverName}');
-    buffer.writeln('Driver ID: ${vehicle.driverIdStr}');
     buffer.writeln('Car Model: ${vehicle.carName}');
-    buffer.writeln('Email Address: ${vehicle.email}');
     buffer.writeln('Report Date: ${DateTime.now().toLocal()}');
-    buffer.writeln('\n================ VEHICLE PARAMETERS ================');
-    buffer.writeln('Battery Size: ${vehicle.batteryCapacity} kWh');
-    buffer.writeln('Curb Weight: ${vehicle.vehicleWeight} kg');
-    buffer.writeln('Motor Peak Power: ${vehicle.motorPower} kW');
-    buffer.writeln('Max Torque: ${vehicle.torque} Nm');
-    buffer.writeln('Motor Efficiency: ${vehicle.motorEfficiency}%');
-    buffer.writeln('Operating Cycle: ${vehicle.runningType == 1 ? "Highway (High Drag)" : "City (Regenerative)"}');
-    buffer.writeln('Speed Limit: ${vehicle.currentSpeed} km/h');
-    buffer.writeln('Condition Status: ${vehicle.vehicleCondition == 1 ? "Working/Active" : "Garage/Service"}');
-
     if (latestPred != null) {
       buffer.writeln('\n================ LATEST AI PREDICTION ================');
-      buffer.writeln('Estimated Remaining Range: ${latestPred.estimatedRange.toStringAsFixed(1)} KM');
-      buffer.writeln('Battery Health Rating: ${latestPred.batteryHealthScore.toStringAsFixed(1)}%');
-      buffer.writeln('Driving Efficiency Rating: ${latestPred.efficiencyScore.toStringAsFixed(1)}%');
-      buffer.writeln('Energy Draw Rate: ${latestPred.predictedEnergyConsumption.toStringAsFixed(1)} Wh/km');
-      buffer.writeln('Estimated Driving Cost: \$${latestPred.costPerKm.toStringAsFixed(4)}/KM');
-      buffer.writeln('Risk Assessment Category: ${latestPred.riskLevel}');
-      buffer.writeln('Recommended Safe Speed: ${latestPred.recommendedSpeed.toStringAsFixed(0)} km/h');
-      buffer.writeln('Recommended Driving Profile: ${latestPred.recommendedDrivingMode}');
+      buffer.writeln('Estimated Range: ${latestPred.estimatedRange.toStringAsFixed(1)} KM');
+      buffer.writeln('Battery Health: ${latestPred.batteryHealthScore.toStringAsFixed(1)}%');
+      buffer.writeln('Efficiency Score: ${latestPred.efficiencyScore.toStringAsFixed(1)}%');
     }
-
     final bytes = utf8.encode(buffer.toString());
     web_helper.downloadFile(bytes, 'driver_vehicle_report_${vehicle.driverIdStr}.txt');
   }
@@ -148,7 +113,8 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
     final auth = Provider.of<AuthController>(context, listen: false);
     await auth.logout();
     if (mounted) {
-      Navigator.pushNamedAndRemoveUntil(context, AppRoutes.roleSelection, (route) => false);
+      Navigator.pushNamedAndRemoveUntil(
+          context, AppRoutes.roleSelection, (route) => false);
     }
   }
 
@@ -157,230 +123,222 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
     final driverCtrl = Provider.of<DriverController>(context);
     final size = MediaQuery.of(context).size;
     final isDesktop = size.width > 900;
-
     final vehicle = driverCtrl.currentVehicle;
 
     if (vehicle == null) {
       return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
       body: Stack(
         children: [
-          // Background glows
-          Positioned(
-            top: -150,
-            left: -150,
+          // Background
+          Positioned.fill(
             child: Container(
-              width: 450,
-              height: 450,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryBlue.withOpacity(0.08),
-                    blurRadius: 150,
-                    spreadRadius: 30,
-                  ),
-                ],
+              decoration: const BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(-1.0, -1.0),
+                  radius: 1.5,
+                  colors: [Color(0xFF051525), AppTheme.backgroundColor],
+                ),
               ),
             ),
           ),
-          
+          Positioned(
+            top: -200, left: -200,
+            child: Container(
+              width: 600,
+              height: 600,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: AppTheme.glowBlue(intensity: 0.06, blur: 200),
+              ),
+            ),
+          ),
+
           SafeArea(
             child: Row(
               children: [
-                // Custom Sidebar for desktop
                 if (isDesktop) _buildSidebar(context),
-                
-                // Main Scrollable Area
                 Expanded(
                   child: SingleChildScrollView(
                     padding: EdgeInsets.all(isDesktop ? 32.0 : 20.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Top Navigation bar for Mobile
+                        // Mobile top bar
                         if (!isDesktop) ...[
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    vehicle.driverName.toUpperCase(),
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                  ),
-                                  Text(
-                                    vehicle.carName,
-                                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                                  ),
-                                ],
-                              ),
+                              Row(children: [
+                                const Icon(Icons.bolt_rounded,
+                                    color: AppTheme.primaryBlue, size: 22),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(vehicle.driverName.toUpperCase(),
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14)),
+                                    Text(vehicle.carName,
+                                        style: const TextStyle(
+                                            color: AppTheme.textSecondary,
+                                            fontSize: 11)),
+                                  ],
+                                ),
+                              ]),
                               IconButton(
-                                icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+                                icon: const Icon(Icons.logout_rounded,
+                                    color: AppTheme.criticalRed),
                                 onPressed: _logout,
-                              )
+                              ),
                             ],
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 20),
                         ],
 
-                        // Greeting header
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'TELEMETRY DASHBOARD',
-                                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 1.5,
-                                        fontSize: isDesktop ? 26 : 22,
-                                      ),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.location_on_outlined, color: AppTheme.primaryBlue, size: 16),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      vehicle.location ?? 'Global Network Node',
-                                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            if (isDesktop)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryBlue.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: AppTheme.primaryBlue.withOpacity(0.3)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.flash_on, color: AppTheme.primaryBlue, size: 16),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      vehicle.driverIdStr,
-                                      style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold, fontSize: 13),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 36),
+                        // ── HERO BANNER ─────────────────────────────────────
+                        _buildHeroBanner(context, vehicle, isDesktop),
+                        const SizedBox(height: 28),
 
-                        // Top metrics row
+                        // ── KPI GRID ────────────────────────────────────────
                         GridView.count(
                           crossAxisCount: isDesktop ? 4 : (size.width > 600 ? 2 : 1),
-                          crossAxisSpacing: 20,
-                          mainAxisSpacing: 20,
-                          childAspectRatio: 2.1,
+                          crossAxisSpacing: 16,
+                          mainAxisSpacing: 16,
+                          childAspectRatio: 2.0,
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           children: [
-                            _buildKPIValueCard(
+                            AnimatedStatCard(
                               title: 'BATTERY CAPACITY',
                               value: '${vehicle.batteryCapacity.toStringAsFixed(0)} kWh',
                               subText: 'Physical energy reservoir',
                               icon: Icons.battery_charging_full_rounded,
                               color: AppTheme.primaryBlue,
                             ),
-                            _buildKPIValueCard(
+                            AnimatedStatCard(
                               title: 'OPERATING SPEED',
                               value: '${vehicle.currentSpeed.toStringAsFixed(0)} km/h',
-                              subText: 'Average cruise velocities',
+                              subText: 'Average cruise velocity',
                               icon: Icons.speed_rounded,
-                              color: Colors.white,
+                              color: AppTheme.accentPurple,
                             ),
-                            _buildKPIValueCard(
+                            AnimatedStatCard(
                               title: 'VEHICLE CONDITION',
-                              value: vehicle.vehicleCondition == 1 ? 'WORKING' : 'GARAGE',
-                              subText: vehicle.vehicleCondition == 1 ? 'Fleet active & ready' : 'Maintenance offline',
-                              icon: vehicle.vehicleCondition == 1 ? Icons.check_circle_outline : Icons.build_circle_outlined,
-                              color: vehicle.vehicleCondition == 1 ? Colors.greenAccent : Colors.orangeAccent,
+                              value: vehicle.vehicleCondition == 1 ? 'ACTIVE' : 'GARAGE',
+                              subText: vehicle.vehicleCondition == 1
+                                  ? 'Fleet ready & operational'
+                                  : 'Maintenance offline',
+                              icon: vehicle.vehicleCondition == 1
+                                  ? Icons.check_circle_outline
+                                  : Icons.build_circle_outlined,
+                              color: vehicle.vehicleCondition == 1
+                                  ? AppTheme.neonGreen
+                                  : AppTheme.amberAlert,
                             ),
-                            _buildKPIValueCard(
-                              title: 'DRIVE TYPE CYCLE',
+                            AnimatedStatCard(
+                              title: 'DRIVE CYCLE',
                               value: vehicle.runningType == 1 ? 'HIGHWAY' : 'CITY',
-                              subText: vehicle.runningType == 1 ? 'Aerodynamic load cycle' : 'Regen recapture cycle',
-                              icon: vehicle.runningType == 1 ? Icons.route_rounded : Icons.location_city_rounded,
+                              subText: vehicle.runningType == 1
+                                  ? 'Aerodynamic load cycle'
+                                  : 'Regen recapture cycle',
+                              icon: vehicle.runningType == 1
+                                  ? Icons.route_rounded
+                                  : Icons.location_city_rounded,
                               color: AppTheme.primaryBlue,
                             ),
                           ],
                         ),
 
-                        const SizedBox(height: 40),
+                        const SizedBox(height: 32),
 
-                        // Section header
-                        const Text(
-                          'QUICK COMMANDS',
-                          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0, fontSize: 14, color: AppTheme.textSecondary),
+                        Row(
+                          children: [
+                            const Icon(Icons.grid_view_rounded,
+                                color: AppTheme.textSecondary, size: 14),
+                            const SizedBox(width: 8),
+                            Text(
+                              'QUICK COMMANDS',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.2,
+                                fontSize: 11,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
 
-                        // Quick actions cards
+                        // ── QUICK ACTIONS GRID ────────────────────────────
                         GridView.count(
                           crossAxisCount: isDesktop ? 4 : (size.width > 600 ? 2 : 1),
-                          crossAxisSpacing: 20,
-                          mainAxisSpacing: 20,
+                          crossAxisSpacing: 16,
+                          mainAxisSpacing: 16,
                           childAspectRatio: 1.3,
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           children: [
-                            _buildQuickActionCard(
+                            HoverActionCard(
                               title: 'Update Vehicle Data',
-                              description: 'Modify weight, efficiency, motor, speed, or current temporal variables.',
+                              description:
+                                  'Modify weight, efficiency, motor, speed, or temporal variables.',
                               icon: Icons.edit_note_rounded,
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (context) => OnboardingScreen(isEditing: true)),
-                                );
-                              },
+                              accentColor: AppTheme.accentPurple,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        OnboardingScreen(isEditing: true)),
+                              ),
                             ),
-                            _buildQuickActionCard(
+                            HoverActionCard(
                               title: 'Predict Range',
-                              description: 'Trigger the physics simulation engine to output 20 range metrics.',
+                              description:
+                                  'Trigger the physics simulation engine to output 20 range metrics.',
                               icon: Icons.psychology_rounded,
-                              onTap: () => Navigator.pushNamed(context, AppRoutes.predictInput),
                               highlight: true,
+                              accentColor: AppTheme.primaryBlue,
+                              onTap: () => Navigator.pushNamed(
+                                  context, AppRoutes.predictInput),
                             ),
-                            _buildQuickActionCard(
+                            HoverActionCard(
                               title: 'View History',
-                              description: 'Browse logs of predictions and track health parameters over time.',
+                              description:
+                                  'Browse logs of predictions and track health parameters.',
                               icon: Icons.history_rounded,
-                              onTap: () {
-                                Navigator.pushNamed(context, AppRoutes.driverHistory);
-                              },
+                              accentColor: AppTheme.neonGreen,
+                              onTap: () => Navigator.pushNamed(
+                                  context, AppRoutes.driverHistory),
                             ),
-                            _buildQuickActionCard(
+                            HoverActionCard(
                               title: 'Download Report',
-                              description: 'Export a copy of current telemetry parameters and range logs.',
+                              description:
+                                  'Export current telemetry parameters and range logs.',
                               icon: Icons.file_download_outlined,
+                              accentColor: AppTheme.amberAlert,
                               onTap: _downloadDriverReport,
                             ),
-                            _buildQuickActionCard(
+                            HoverActionCard(
                               title: 'My Analytics',
-                              description: 'View trip charts, safety score, income trends and battery health.',
+                              description:
+                                  'Trip charts, safety score, income trends and battery health.',
                               icon: Icons.bar_chart_rounded,
-                              onTap: () => Navigator.push(context,
-                                  MaterialPageRoute(builder: (_) => const DriverAnalyticsScreen())),
+                              accentColor: AppTheme.accentPurple,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const DriverAnalyticsScreen()),
+                              ),
                             ),
                           ],
                         ),
+                        const SizedBox(height: 40),
                       ],
                     ),
                   ),
@@ -389,170 +347,269 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
             ),
           ),
 
-          // Loading overlay
           if (_isPredicting) _buildPredictionOverlay(),
         ],
       ),
     );
   }
 
-  Widget _buildSidebar(BuildContext context) {
-    final vehicle = Provider.of<DriverController>(context).currentVehicle!;
-    return Container(
-      width: 260,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0D0D18),
-        border: Border(right: BorderSide(color: AppTheme.glassBorderColor, width: 0.8)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.auto_graph_rounded, color: AppTheme.primaryBlue, size: 28),
-              const SizedBox(width: 8),
-              const Text(
-                'DAP DRIVER',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 1.0),
-              ),
-            ],
-          ),
-          const SizedBox(height: 48),
-
-          // Vehicle Card Details
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.02),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppTheme.glassBorderColor, width: 0.8),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  vehicle.driverName,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  vehicle.email,
-                  style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 12),
-                const Divider(color: AppTheme.glassBorderColor),
-                const SizedBox(height: 8),
-                Text(
-                  vehicle.carName,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.primaryBlue),
-                ),
-              ],
-            ),
-          ),
-          
-          const Spacer(),
-
-          // Logout button
-          ListTile(
-            onTap: _logout,
-            leading: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 20),
-            title: const Text('LOGOUT', style: TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
-            contentPadding: EdgeInsets.zero,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildKPIValueCard({
-    required String title,
-    required String value,
-    required String subText,
-    required IconData icon,
-    required Color color,
-  }) {
-    return GlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+  Widget _buildHeroBanner(BuildContext context, vehicle, bool isDesktop) {
+    return NeonGlassCard(
+      accentColor: AppTheme.primaryBlue,
+      padding: EdgeInsets.all(isDesktop ? 28 : 20),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                Row(
+                  children: [
+                    NeonBadge(
+                      label: 'TELEMETRY DASHBOARD',
+                      color: AppTheme.primaryBlue,
+                      icon: Icons.bolt_rounded,
+                    ),
+                    const SizedBox(width: 10),
+                    const PulsingDot(color: AppTheme.neonGreen, size: 8),
+                    const SizedBox(width: 6),
+                    const Text('LIVE',
+                        style: TextStyle(
+                            color: AppTheme.neonGreen,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.0)),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                GradientText(
+                  text: vehicle.driverName,
+                  gradient: AppTheme.primaryGradient,
+                  style: TextStyle(
+                    fontSize: isDesktop ? 28 : 22,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                  ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subText,
-                  style: TextStyle(color: AppTheme.textSecondary.withOpacity(0.7), fontSize: 10),
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    const Icon(Icons.directions_car_outlined,
+                        color: AppTheme.textSecondary, size: 14),
+                    const SizedBox(width: 6),
+                    Text(vehicle.carName,
+                        style: const TextStyle(
+                            color: AppTheme.textSecondary, fontSize: 13)),
+                    const SizedBox(width: 14),
+                    const Icon(Icons.location_on_outlined,
+                        color: AppTheme.textSecondary, size: 14),
+                    const SizedBox(width: 4),
+                    Text(vehicle.location ?? 'Global Network Node',
+                        style: const TextStyle(
+                            color: AppTheme.textSecondary, fontSize: 13)),
+                  ],
                 ),
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.08),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color, size: 20),
-          )
+          if (isDesktop) ...[
+            const SizedBox(width: 20),
+            // EV Status Ring
+            _EVStatusRing(batteryKwh: vehicle.batteryCapacity),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildQuickActionCard({
-    required String title,
-    required String description,
-    required IconData icon,
-    required VoidCallback onTap,
-    bool highlight = false,
-  }) {
-    return MouseRegion(
-      child: GestureDetector(
-        onTap: onTap,
-        child: GlassCard(
-          opacity: highlight ? 0.12 : 0.06,
-          borderColor: highlight ? AppTheme.primaryBlue.withOpacity(0.5) : AppTheme.glassBorderColor.withOpacity(0.5),
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: highlight ? AppTheme.primaryBlue : Colors.white.withOpacity(0.04),
-                  borderRadius: BorderRadius.circular(10),
+  Widget _buildSidebar(BuildContext context) {
+    final vehicle =
+        Provider.of<DriverController>(context).currentVehicle!;
+    return Container(
+      width: 260,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF080818), Color(0xFF0A0A16)],
+        ),
+        border:
+            Border(right: BorderSide(color: AppTheme.glassBorderColor, width: 0.8)),
+      ),
+      child: Column(
+        children: [
+          // Sidebar header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                    color: AppTheme.glassBorderColor.withValues(alpha: 0.5)),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.primaryGradient,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: AppTheme.glowBlue(intensity: 0.3, blur: 16),
+                  ),
+                  child: const Icon(Icons.bolt_rounded,
+                      color: Colors.white, size: 22),
                 ),
-                child: Icon(icon, color: Colors.white, size: 22),
+                const SizedBox(width: 12),
+                const Text('DAP DRIVER',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        letterSpacing: 1.0)),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Nav items
+          _buildNavItem(0, 'Dashboard', Icons.dashboard_outlined),
+          _buildNavItem(1, 'My Analytics', Icons.bar_chart_rounded),
+          _buildNavItem(2, 'History', Icons.history_rounded),
+
+          const SizedBox(height: 20),
+
+          // Vehicle info card
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: NeonGlassCard(
+              accentColor: AppTheme.primaryBlue,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          gradient: AppTheme.primaryGradient,
+                          shape: BoxShape.circle,
+                          boxShadow: AppTheme.glowBlue(intensity: 0.25, blur: 10),
+                        ),
+                        child: Center(
+                          child: Text(
+                            vehicle.driverName.isNotEmpty
+                                ? vehicle.driverName[0].toUpperCase()
+                                : 'D',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 16),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(vehicle.driverName,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: Colors.white),
+                                overflow: TextOverflow.ellipsis),
+                            Text(vehicle.email,
+                                style: const TextStyle(
+                                    fontSize: 10, color: AppTheme.textSecondary),
+                                overflow: TextOverflow.ellipsis),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(color: AppTheme.glassBorderColor, height: 20),
+                  GradientText(
+                    text: vehicle.carName,
+                    gradient: AppTheme.primaryGradient,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                  const SizedBox(height: 4),
+                  NeonBadge(
+                    label: vehicle.driverIdStr,
+                    color: AppTheme.textSecondary,
+                    icon: Icons.badge_outlined,
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                description,
-                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11, height: 1.3),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+            ),
+          ),
+
+          const Spacer(),
+
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: GlassButton(
+              text: 'LOGOUT',
+              color: AppTheme.criticalRed,
+              color2: const Color(0xFFFF6B00),
+              icon: Icons.logout_rounded,
+              onPressed: _logout,
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, String label, IconData icon) {
+    final isSelected = _selectedNav == index;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      child: InkWell(
+        onTap: () {
+          setState(() => _selectedNav = index);
+          if (index == 1) {
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const DriverAnalyticsScreen()));
+          } else if (index == 2) {
+            Navigator.pushNamed(context, AppRoutes.driverHistory);
+          }
+        },
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            color: isSelected
+                ? AppTheme.primaryBlue.withValues(alpha: 0.1)
+                : Colors.transparent,
+            border: isSelected
+                ? Border.all(
+                    color: AppTheme.primaryBlue.withValues(alpha: 0.25),
+                    width: 0.8)
+                : null,
+          ),
+          child: Row(
+            children: [
+              Icon(icon,
+                  color:
+                      isSelected ? AppTheme.primaryBlue : AppTheme.textSecondary,
+                  size: 18),
+              const SizedBox(width: 12),
+              Text(label,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : AppTheme.textSecondary,
+                    fontWeight:
+                        isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 13,
+                  )),
             ],
           ),
         ),
@@ -562,51 +619,155 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
 
   Widget _buildPredictionOverlay() {
     return Container(
-      color: Colors.black.withOpacity(0.85),
+      color: Colors.black.withValues(alpha: 0.88),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Glowing circular loader
             RotationTransition(
               turns: _animationController,
               child: Container(
-                width: 72,
-                height: 72,
+                width: 80,
+                height: 80,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.transparent, width: 4),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.primaryBlue.withOpacity(0.3),
-                      blurRadius: 24,
-                    )
-                  ],
+                  boxShadow: AppTheme.glowBlue(intensity: 0.5, blur: 32),
                 ),
                 child: const CircularProgressIndicator(
-                  strokeWidth: 4,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryBlue),
+                  strokeWidth: 3,
+                  valueColor:
+                      AlwaysStoppedAnimation<Color>(AppTheme.primaryBlue),
                 ),
               ),
             ),
-            const SizedBox(height: 36),
+            const SizedBox(height: 32),
+            NeonBadge(
+              label: 'ML ENGINE ACTIVE',
+              color: AppTheme.primaryBlue,
+              icon: Icons.memory_rounded,
+            ),
+            const SizedBox(height: 20),
             Text(
               _predictionStatusText,
               style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-                color: Colors.white,
-              ),
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.3,
+                  color: Colors.white),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Running advanced physical simulations on server',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-            ),
+            const Text('Running advanced physical simulations on server',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
           ],
         ),
       ),
     );
   }
+}
+
+// ─── EV Status Ring ───────────────────────────────────────────────────────────
+class _EVStatusRing extends StatefulWidget {
+  final double batteryKwh;
+  const _EVStatusRing({required this.batteryKwh});
+
+  @override
+  State<_EVStatusRing> createState() => _EVStatusRingState();
+}
+
+class _EVStatusRingState extends State<_EVStatusRing>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1200));
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Normalize battery: typical max 100 kWh
+    final pct = (widget.batteryKwh / 100.0).clamp(0.0, 1.0);
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, __) => SizedBox(
+        width: 110,
+        height: 110,
+        child: CustomPaint(
+          painter: _RingPainter(value: pct * _anim.value),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '${widget.batteryKwh.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      height: 1.0),
+                ),
+                const Text('kWh',
+                    style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 10,
+                        letterSpacing: 0.5)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  final double value;
+  _RingPainter({required this.value});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const strokeW = 8.0;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - strokeW) / 2;
+    const startAngle = -3.14159 / 2;
+    const fullSweep = 2 * 3.14159;
+
+    // Background ring
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle, fullSweep, false,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.06)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeW
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // Active ring
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle, fullSweep * value, false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeW
+        ..strokeCap = StrokeCap.round
+        ..shader = const LinearGradient(
+          colors: [AppTheme.primaryBlue, AppTheme.neonGreen],
+        ).createShader(Rect.fromCircle(center: center, radius: radius)),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) => old.value != value;
 }

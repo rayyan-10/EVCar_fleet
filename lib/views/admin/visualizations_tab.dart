@@ -359,78 +359,91 @@ class _VisualizationsTabState extends State<VisualizationsTab> {
   }
 
   Widget _buildDriverGrowthTrendChart() {
-    // Return a Line chart showing user signup trends over 3 weeks
-    return LineChart(
-      LineChartData(
-        lineBarsData: [
-          LineChartBarData(
-            spots: const [
-              FlSpot(1, 1),
-              FlSpot(2, 3),
-              FlSpot(3, 4),
-              FlSpot(4, 6),
-            ],
-            color: AppTheme.primaryBlue,
-            isCurved: true,
-            dotData: const FlDotData(show: true),
-            belowBarData: BarAreaData(show: true, color: AppTheme.primaryBlue.withOpacity(0.1)),
-          ),
-        ],
-        titlesData: FlTitlesData(
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 20)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (val, _) {
-                switch (val.toInt()) {
-                  case 1: return const Text('Week 1', style: TextStyle(fontSize: 10));
-                  case 2: return const Text('Week 2', style: TextStyle(fontSize: 10));
-                  case 3: return const Text('Week 3', style: TextStyle(fontSize: 10));
-                  case 4: return const Text('Week 4', style: TextStyle(fontSize: 10));
-                }
-                return const Text('');
-              },
-            ),
-          ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+    final controller = Provider.of<AdminController>(context);
+    final predictions = controller.filteredPredictions;
+    if (predictions.isEmpty) return _buildNoDataState();
+
+    // Group predictions by week (week 0 = oldest, ascending)
+    final dates = predictions.map((p) => p.predictionDate).toList()..sort();
+    if (dates.isEmpty) return _buildNoDataState();
+    final minDate = dates.first;
+    final Map<int, Set<String>> weekDrivers = {};
+    for (final pred in predictions) {
+      final week = pred.predictionDate.difference(minDate).inDays ~/ 7;
+      weekDrivers.putIfAbsent(week, () => {}).add(pred.driverId);
+    }
+    final weeks = weekDrivers.keys.toList()..sort();
+    final spots = weeks.asMap().entries.map((e) =>
+      FlSpot(e.key.toDouble(), weekDrivers[e.value]!.length.toDouble())
+    ).toList();
+
+    return LineChart(LineChartData(
+      lineBarsData: [
+        LineChartBarData(
+          spots: spots, color: AppTheme.primaryBlue, isCurved: true,
+          dotData: const FlDotData(show: true),
+          belowBarData: BarAreaData(show: true, color: AppTheme.primaryBlue.withOpacity(0.1)),
         ),
-        gridData: const FlGridData(show: false),
-        borderData: FlBorderData(show: false),
+      ],
+      titlesData: FlTitlesData(
+        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 24)),
+        bottomTitles: AxisTitles(sideTitles: SideTitles(
+          showTitles: true,
+          getTitlesWidget: (val, _) => Text('Wk ${val.toInt() + 1}',
+              style: const TextStyle(fontSize: 10)),
+        )),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
-    );
+      gridData: const FlGridData(show: false),
+      borderData: FlBorderData(show: false),
+    ));
   }
 
   Widget _buildMonthlyPredictionTrendChart() {
-    return BarChart(
-      BarChartData(
-        barGroups: [
-          BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: 6, color: Colors.indigo, width: 14)]),
-          BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: 10, color: AppTheme.primaryBlue, width: 14)]),
-          BarChartGroupData(x: 2, barRods: [BarChartRodData(toY: 17, color: Colors.tealAccent, width: 14)]),
-        ],
-        titlesData: FlTitlesData(
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 20)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (val, _) {
-                switch (val.toInt()) {
-                  case 0: return const Text('April', style: TextStyle(fontSize: 10));
-                  case 1: return const Text('May', style: TextStyle(fontSize: 10));
-                  case 2: return const Text('June', style: TextStyle(fontSize: 10));
-                }
-                return const Text('');
-              },
-            ),
-          ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        gridData: const FlGridData(show: false),
-        borderData: FlBorderData(show: false),
+    final controller = Provider.of<AdminController>(context);
+    final predictions = controller.filteredPredictions;
+    if (predictions.isEmpty) return _buildNoDataState();
+
+    // Group by month label
+    final Map<String, int> monthCount = {};
+    for (final pred in predictions) {
+      final key = '${pred.predictionDate.year}-${pred.predictionDate.month.toString().padLeft(2, '0')}';
+      monthCount[key] = (monthCount[key] ?? 0) + 1;
+    }
+    final months = monthCount.keys.toList()..sort();
+    final monthLabels = months.map((k) {
+      final parts = k.split('-');
+      const names = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return names[int.parse(parts[1])];
+    }).toList();
+
+    return BarChart(BarChartData(
+      barGroups: List.generate(months.length, (i) => BarChartGroupData(x: i, barRods: [
+        BarChartRodData(toY: monthCount[months[i]]!.toDouble(),
+          gradient: LinearGradient(
+            colors: [AppTheme.primaryBlue.withOpacity(0.6), AppTheme.primaryBlue],
+            begin: Alignment.bottomCenter, end: Alignment.topCenter,
+          ), width: 14),
+      ])),
+      titlesData: FlTitlesData(
+        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 24)),
+        bottomTitles: AxisTitles(sideTitles: SideTitles(
+          showTitles: true,
+          getTitlesWidget: (val, _) {
+            final i = val.toInt();
+            if (i >= 0 && i < monthLabels.length) {
+              return Text(monthLabels[i], style: const TextStyle(fontSize: 10));
+            }
+            return const Text('');
+          },
+        )),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
-    );
+      gridData: const FlGridData(show: false),
+      borderData: FlBorderData(show: false),
+    ));
   }
 
   Widget _buildSpeedAnalysisChart() {
@@ -536,68 +549,92 @@ class _VisualizationsTabState extends State<VisualizationsTab> {
   }
 
   Widget _buildCarwisePerformanceChart() {
-    // Group averages by car type
-    return BarChart(
-      BarChartData(
-        barGroups: [
-          BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: 92, color: AppTheme.primaryBlue, width: 14)]),
-          BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: 78, color: Colors.tealAccent, width: 14)]),
-          BarChartGroupData(x: 2, barRods: [BarChartRodData(toY: 65, color: Colors.orangeAccent, width: 14)]),
-        ],
-        titlesData: FlTitlesData(
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 20)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (val, _) {
-                switch (val.toInt()) {
-                  case 0: return const Text('Tesla M3', style: TextStyle(fontSize: 10));
-                  case 1: return const Text('Bolt EV', style: TextStyle(fontSize: 10));
-                  case 2: return const Text('Leaf e+', style: TextStyle(fontSize: 10));
-                }
-                return const Text('');
-              },
-            ),
-          ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        gridData: const FlGridData(show: false),
-        borderData: FlBorderData(show: false),
+    final controller = Provider.of<AdminController>(context);
+    final predictions = controller.filteredPredictions;
+    if (predictions.isEmpty) return _buildNoDataState();
+
+    // Average vehiclePerformanceScore grouped by carName
+    final Map<String, List<double>> carScores = {};
+    for (final pred in predictions) {
+      carScores.putIfAbsent(pred.carName, () => []).add(pred.vehiclePerformanceScore);
+    }
+    final cars = carScores.keys.toList()..sort();
+    final avgs = cars.map((c) {
+      final vals = carScores[c]!;
+      return vals.reduce((a, b) => a + b) / vals.length;
+    }).toList();
+
+    final colors = [AppTheme.primaryBlue, Colors.tealAccent, Colors.orangeAccent,
+                    Colors.purpleAccent, Colors.amberAccent, Colors.redAccent];
+
+    return BarChart(BarChartData(
+      barGroups: List.generate(cars.length, (i) => BarChartGroupData(x: i, barRods: [
+        BarChartRodData(toY: avgs[i], color: colors[i % colors.length], width: 16),
+      ])),
+      titlesData: FlTitlesData(
+        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 24)),
+        bottomTitles: AxisTitles(sideTitles: SideTitles(
+          showTitles: true,
+          getTitlesWidget: (val, _) {
+            final i = val.toInt();
+            if (i >= 0 && i < cars.length) {
+              final label = cars[i].split(' ').last;
+              return Text(label, style: const TextStyle(fontSize: 9));
+            }
+            return const Text('');
+          },
+        )),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
-    );
+      gridData: const FlGridData(show: false),
+      borderData: FlBorderData(show: false),
+    ));
   }
 
   Widget _buildDriverwisePerformanceChart() {
-    return BarChart(
-      BarChartData(
-        barGroups: [
-          BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: 96, color: Colors.greenAccent, width: 12)]),
-          BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: 92, color: AppTheme.primaryBlue, width: 12)]),
-          BarChartGroupData(x: 2, barRods: [BarChartRodData(toY: 74, color: Colors.orangeAccent, width: 12)]),
-        ],
-        titlesData: FlTitlesData(
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 20)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (val, _) {
-                switch (val.toInt()) {
-                  case 0: return const Text('Elon', style: TextStyle(fontSize: 9));
-                  case 1: return const Text('Sarah', style: TextStyle(fontSize: 9));
-                  case 2: return const Text('Kenji', style: TextStyle(fontSize: 9));
-                }
-                return const Text('');
-              },
-            ),
-          ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        gridData: const FlGridData(show: false),
-        borderData: FlBorderData(show: false),
+    final controller = Provider.of<AdminController>(context);
+    final predictions = controller.filteredPredictions;
+    if (predictions.isEmpty) return _buildNoDataState();
+
+    // Average driverEfficiencyScore per driverIdStr
+    final Map<String, List<double>> driverScores = {};
+    for (final pred in predictions) {
+      driverScores.putIfAbsent(pred.driverIdStr, () => []).add(pred.driverEfficiencyScore);
+    }
+    final drivers = driverScores.keys.toList()..sort();
+    final avgs = drivers.map((d) {
+      final vals = driverScores[d]!;
+      return vals.reduce((a, b) => a + b) / vals.length;
+    }).toList();
+
+    final colors = [Colors.greenAccent, AppTheme.primaryBlue, Colors.orangeAccent,
+                    Colors.purpleAccent, Colors.tealAccent];
+
+    return BarChart(BarChartData(
+      barGroups: List.generate(drivers.length, (i) => BarChartGroupData(x: i, barRods: [
+        BarChartRodData(toY: avgs[i], color: colors[i % colors.length], width: 14),
+      ])),
+      titlesData: FlTitlesData(
+        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 24)),
+        bottomTitles: AxisTitles(sideTitles: SideTitles(
+          showTitles: true,
+          getTitlesWidget: (val, _) {
+            final i = val.toInt();
+            if (i >= 0 && i < drivers.length) {
+              // Show last part of driver ID for brevity
+              final parts = drivers[i].split('-');
+              return Text(parts.last, style: const TextStyle(fontSize: 9));
+            }
+            return const Text('');
+          },
+        )),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
-    );
+      gridData: const FlGridData(show: false),
+      borderData: FlBorderData(show: false),
+    ));
   }
 
   Widget _buildVehicleHealthDistributionChart() {
@@ -648,171 +685,220 @@ class _VisualizationsTabState extends State<VisualizationsTab> {
   }
 
   Widget _buildBatteryHealthTrendChart() {
-    return LineChart(
-      LineChartData(
-        lineBarsData: [
-          LineChartBarData(
-            spots: const [
-              FlSpot(1, 99.2),
-              FlSpot(2, 98.8),
-              FlSpot(3, 98.1),
-              FlSpot(4, 97.4),
-            ],
-            color: Colors.greenAccent,
-            isCurved: false,
-            dotData: const FlDotData(show: true),
-          ),
-        ],
-        titlesData: FlTitlesData(
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 28)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (val, _) {
-                switch (val.toInt()) {
-                  case 1: return const Text('Month 1', style: TextStyle(fontSize: 10));
-                  case 2: return const Text('Month 2', style: TextStyle(fontSize: 10));
-                  case 3: return const Text('Month 3', style: TextStyle(fontSize: 10));
-                  case 4: return const Text('Month 4', style: TextStyle(fontSize: 10));
-                }
-                return const Text('');
-              },
-            ),
-          ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+    final controller = Provider.of<AdminController>(context);
+    final predictions = controller.filteredPredictions;
+    if (predictions.isEmpty) return _buildNoDataState();
+
+    // Average batteryHealthScore grouped by month index (chronological)
+    final sorted = [...predictions]..sort((a, b) => a.predictionDate.compareTo(b.predictionDate));
+    final Map<String, List<double>> monthHealth = {};
+    for (final pred in sorted) {
+      final key = '${pred.predictionDate.year}-${pred.predictionDate.month.toString().padLeft(2, '0')}';
+      monthHealth.putIfAbsent(key, () => []).add(pred.batteryHealthScore);
+    }
+    final months = monthHealth.keys.toList()..sort();
+    final spots = months.asMap().entries.map((e) {
+      final vals = monthHealth[e.value]!;
+      return FlSpot(e.key.toDouble(), vals.reduce((a, b) => a + b) / vals.length);
+    }).toList();
+    final labels = months.map((k) {
+      final parts = k.split('-');
+      const names = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return names[int.parse(parts[1])];
+    }).toList();
+
+    return LineChart(LineChartData(
+      lineBarsData: [
+        LineChartBarData(
+          spots: spots, color: Colors.greenAccent, isCurved: false,
+          dotData: const FlDotData(show: true),
         ),
-        gridData: const FlGridData(show: false),
-        borderData: FlBorderData(show: false),
+      ],
+      titlesData: FlTitlesData(
+        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 28)),
+        bottomTitles: AxisTitles(sideTitles: SideTitles(
+          showTitles: true,
+          getTitlesWidget: (val, _) {
+            final i = val.toInt();
+            if (i >= 0 && i < labels.length) return Text(labels[i], style: const TextStyle(fontSize: 10));
+            return const Text('');
+          },
+        )),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
-    );
+      gridData: const FlGridData(show: false),
+      borderData: FlBorderData(show: false),
+    ));
   }
 
   Widget _buildCostAnalysisChart() {
-    return LineChart(
-      LineChartData(
-        lineBarsData: [
-          LineChartBarData(
-            spots: const [
-              FlSpot(1, 38.0),
-              FlSpot(2, 42.0),
-              FlSpot(3, 49.0),
-              FlSpot(4, 55.0),
-            ],
-            color: Colors.amberAccent,
-            isCurved: true,
-            belowBarData: BarAreaData(show: true, color: Colors.amberAccent.withOpacity(0.05)),
-          ),
-        ],
-        titlesData: FlTitlesData(
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 24)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (val, _) {
-                switch (val.toInt()) {
-                  case 1: return const Text('Wk 1', style: TextStyle(fontSize: 10));
-                  case 2: return const Text('Wk 2', style: TextStyle(fontSize: 10));
-                  case 3: return const Text('Wk 3', style: TextStyle(fontSize: 10));
-                  case 4: return const Text('Wk 4', style: TextStyle(fontSize: 10));
-                }
-                return const Text('');
-              },
-            ),
-          ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+    final controller = Provider.of<AdminController>(context);
+    final predictions = controller.filteredPredictions;
+    if (predictions.isEmpty) return _buildNoDataState();
+
+    // Average monthlyCostEstimation grouped by month
+    final Map<String, List<double>> monthCost = {};
+    for (final pred in predictions) {
+      final key = '${pred.predictionDate.year}-${pred.predictionDate.month.toString().padLeft(2, '0')}';
+      monthCost.putIfAbsent(key, () => []).add(pred.monthlyCostEstimation);
+    }
+    final months = monthCost.keys.toList()..sort();
+    final spots = months.asMap().entries.map((e) {
+      final vals = monthCost[e.value]!;
+      return FlSpot(e.key.toDouble(), vals.reduce((a, b) => a + b) / vals.length);
+    }).toList();
+    final labels = months.map((k) {
+      final parts = k.split('-');
+      const names = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return names[int.parse(parts[1])];
+    }).toList();
+
+    return LineChart(LineChartData(
+      lineBarsData: [
+        LineChartBarData(
+          spots: spots, color: Colors.amberAccent, isCurved: true,
+          belowBarData: BarAreaData(show: true, color: Colors.amberAccent.withOpacity(0.05)),
         ),
-        gridData: const FlGridData(show: false),
-        borderData: FlBorderData(show: false),
+      ],
+      titlesData: FlTitlesData(
+        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30)),
+        bottomTitles: AxisTitles(sideTitles: SideTitles(
+          showTitles: true,
+          getTitlesWidget: (val, _) {
+            final i = val.toInt();
+            if (i >= 0 && i < labels.length) return Text(labels[i], style: const TextStyle(fontSize: 10));
+            return const Text('');
+          },
+        )),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
-    );
+      gridData: const FlGridData(show: false),
+      borderData: FlBorderData(show: false),
+    ));
   }
 
   Widget _buildRangeTrendChart() {
-    return LineChart(
-      LineChartData(
-        lineBarsData: [
-          LineChartBarData(
-            spots: const [
-              FlSpot(1, 360),
-              FlSpot(2, 395),
-              FlSpot(3, 410),
-              FlSpot(4, 420),
-            ],
-            color: AppTheme.primaryBlue,
-            isCurved: true,
-          ),
-        ],
-        titlesData: FlTitlesData(
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 28)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (val, _) {
-                switch (val.toInt()) {
-                  case 1: return const Text('April', style: TextStyle(fontSize: 10));
-                  case 2: return const Text('May', style: TextStyle(fontSize: 10));
-                  case 3: return const Text('June', style: TextStyle(fontSize: 10));
-                  case 4: return const Text('July', style: TextStyle(fontSize: 10));
-                }
-                return const Text('');
-              },
-            ),
-          ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+    final controller = Provider.of<AdminController>(context);
+    final predictions = controller.filteredPredictions;
+    if (predictions.isEmpty) return _buildNoDataState();
+
+    // Average estimatedRange grouped by month
+    final Map<String, List<double>> monthRange = {};
+    for (final pred in predictions) {
+      final key = '${pred.predictionDate.year}-${pred.predictionDate.month.toString().padLeft(2, '0')}';
+      monthRange.putIfAbsent(key, () => []).add(pred.estimatedRange);
+    }
+    final months = monthRange.keys.toList()..sort();
+    final spots = months.asMap().entries.map((e) {
+      final vals = monthRange[e.value]!;
+      return FlSpot(e.key.toDouble(), vals.reduce((a, b) => a + b) / vals.length);
+    }).toList();
+    final labels = months.map((k) {
+      final parts = k.split('-');
+      const names = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return names[int.parse(parts[1])];
+    }).toList();
+
+    return LineChart(LineChartData(
+      lineBarsData: [
+        LineChartBarData(
+          spots: spots, color: AppTheme.primaryBlue, isCurved: true,
+          belowBarData: BarAreaData(show: true, color: AppTheme.primaryBlue.withOpacity(0.07)),
         ),
-        gridData: const FlGridData(show: false),
-        borderData: FlBorderData(show: false),
+      ],
+      titlesData: FlTitlesData(
+        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 32)),
+        bottomTitles: AxisTitles(sideTitles: SideTitles(
+          showTitles: true,
+          getTitlesWidget: (val, _) {
+            final i = val.toInt();
+            if (i >= 0 && i < labels.length) return Text(labels[i], style: const TextStyle(fontSize: 10));
+            return const Text('');
+          },
+        )),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
-    );
+      gridData: const FlGridData(show: false),
+      borderData: FlBorderData(show: false),
+    ));
   }
 
   Widget _buildServiceForecastChart() {
-    return PieChart(
-      PieChartData(
-        sectionsSpace: 4,
-        centerSpaceRadius: 28,
-        sections: [
-          PieChartSectionData(color: Colors.redAccent, value: 1, title: 'Alerts', radius: 40, titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-          PieChartSectionData(color: Colors.amberAccent, value: 2, title: 'Soon', radius: 40, titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-          PieChartSectionData(color: Colors.greenAccent, value: 5, title: 'Okay', radius: 40, titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
+    final controller = Provider.of<AdminController>(context);
+    final predictions = controller.filteredPredictions;
+    if (predictions.isEmpty) return _buildNoDataState();
+
+    double alerts = 0, soon = 0, okay = 0;
+    for (final pred in predictions) {
+      if (pred.nextServiceRecommendation.toLowerCase().contains('immediate')) alerts++;
+      else if (pred.nextServiceRecommendation.toLowerCase().contains('30 days') ||
+               pred.nextServiceRecommendation.toLowerCase().contains('3 month')) soon++;
+      else okay++;
+    }
+    final total = alerts + soon + okay;
+
+    return PieChart(PieChartData(
+      sectionsSpace: 4,
+      centerSpaceRadius: 28,
+      sections: [
+        if (alerts > 0) PieChartSectionData(color: Colors.redAccent, value: alerts,
+          title: '${(alerts / total * 100).toStringAsFixed(0)}%\nAlert',
+          radius: 40, titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+        if (soon > 0) PieChartSectionData(color: Colors.amberAccent, value: soon,
+          title: '${(soon / total * 100).toStringAsFixed(0)}%\nSoon',
+          radius: 40, titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+        if (okay > 0) PieChartSectionData(color: Colors.greenAccent, value: okay,
+          title: '${(okay / total * 100).toStringAsFixed(0)}%\nOkay',
+          radius: 40, titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black)),
+      ],
+    ));
   }
 
   Widget _buildVehicleUsageChart() {
-    return BarChart(
-      BarChartData(
-        barGroups: [
-          BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: 120, color: Colors.blue, width: 14)]),
-          BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: 155, color: Colors.blueAccent, width: 14)]),
-          BarChartGroupData(x: 2, barRods: [BarChartRodData(toY: 180, color: Colors.tealAccent, width: 14)]),
-        ],
-        titlesData: FlTitlesData(
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 24)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (val, _) {
-                switch (val.toInt()) {
-                  case 0: return const Text('April', style: TextStyle(fontSize: 10));
-                  case 1: return const Text('May', style: TextStyle(fontSize: 10));
-                  case 2: return const Text('June', style: TextStyle(fontSize: 10));
-                }
-                return const Text('');
-              },
-            ),
-          ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        gridData: const FlGridData(show: false),
-        borderData: FlBorderData(show: false),
+    final controller = Provider.of<AdminController>(context);
+    final predictions = controller.filteredPredictions;
+    if (predictions.isEmpty) return _buildNoDataState();
+
+    // Average vehicleUtilizationScore by month
+    final Map<String, List<double>> monthUtil = {};
+    for (final pred in predictions) {
+      final key = '${pred.predictionDate.year}-${pred.predictionDate.month.toString().padLeft(2, '0')}';
+      monthUtil.putIfAbsent(key, () => []).add(pred.vehicleUtilizationScore);
+    }
+    final months = monthUtil.keys.toList()..sort();
+    final labels = months.map((k) {
+      final parts = k.split('-');
+      const names = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return names[int.parse(parts[1])];
+    }).toList();
+
+    return BarChart(BarChartData(
+      barGroups: List.generate(months.length, (i) {
+        final vals = monthUtil[months[i]]!;
+        final avg = vals.reduce((a, b) => a + b) / vals.length;
+        return BarChartGroupData(x: i, barRods: [
+          BarChartRodData(toY: avg, color: Colors.tealAccent, width: 14),
+        ]);
+      }),
+      titlesData: FlTitlesData(
+        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 28)),
+        bottomTitles: AxisTitles(sideTitles: SideTitles(
+          showTitles: true,
+          getTitlesWidget: (val, _) {
+            final i = val.toInt();
+            if (i >= 0 && i < labels.length) return Text(labels[i], style: const TextStyle(fontSize: 10));
+            return const Text('');
+          },
+        )),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
-    );
+      gridData: const FlGridData(show: false),
+      borderData: FlBorderData(show: false),
+    ));
   }
 
   Widget _buildRiskAnalysisChart() {
@@ -846,35 +932,46 @@ class _VisualizationsTabState extends State<VisualizationsTab> {
   }
 
   Widget _buildEnergyConsumptionChart() {
-    return BarChart(
-      BarChartData(
-        barGroups: [
-          BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: 155, color: Colors.blueAccent, width: 18)]),
-          BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: 175, color: Colors.tealAccent, width: 18)]),
-          BarChartGroupData(x: 2, barRods: [BarChartRodData(toY: 240, color: Colors.orangeAccent, width: 18)]),
-        ],
-        titlesData: FlTitlesData(
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 28)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (val, _) {
-                switch (val.toInt()) {
-                  case 0: return const Text('Tesla M3', style: TextStyle(fontSize: 10));
-                  case 1: return const Text('Bolt EV', style: TextStyle(fontSize: 10));
-                  case 2: return const Text('e-tron GT', style: TextStyle(fontSize: 10));
-                }
-                return const Text('');
-              },
-            ),
-          ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        gridData: const FlGridData(show: false),
-        borderData: FlBorderData(show: false),
+    final controller = Provider.of<AdminController>(context);
+    final predictions = controller.filteredPredictions;
+    if (predictions.isEmpty) return _buildNoDataState();
+
+    // Average predictedEnergyConsumption (Wh/km) per carName
+    final Map<String, List<double>> carEnergy = {};
+    for (final pred in predictions) {
+      carEnergy.putIfAbsent(pred.carName, () => []).add(pred.predictedEnergyConsumption);
+    }
+    final cars = carEnergy.keys.toList()..sort();
+    final avgs = cars.map((c) {
+      final vals = carEnergy[c]!;
+      return vals.reduce((a, b) => a + b) / vals.length;
+    }).toList();
+
+    final colors = [Colors.blueAccent, Colors.tealAccent, Colors.orangeAccent,
+                    Colors.purpleAccent, Colors.amberAccent];
+
+    return BarChart(BarChartData(
+      barGroups: List.generate(cars.length, (i) => BarChartGroupData(x: i, barRods: [
+        BarChartRodData(toY: avgs[i], color: colors[i % colors.length], width: 18),
+      ])),
+      titlesData: FlTitlesData(
+        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30)),
+        bottomTitles: AxisTitles(sideTitles: SideTitles(
+          showTitles: true,
+          getTitlesWidget: (val, _) {
+            final i = val.toInt();
+            if (i >= 0 && i < cars.length) {
+              return Text(cars[i].split(' ').last, style: const TextStyle(fontSize: 9));
+            }
+            return const Text('');
+          },
+        )),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
-    );
+      gridData: const FlGridData(show: false),
+      borderData: FlBorderData(show: false),
+    ));
   }
 
   Widget _buildDriverEfficiencyRankingsList() {

@@ -9,6 +9,7 @@ import 'visualizations_tab.dart';
 import 'driver_table_tab.dart';
 import 'insights_tab.dart';
 import 'telemetry_kpi_dashboard.dart';
+import 'speed_violations_tab.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({Key? key}) : super(key: key);
@@ -50,22 +51,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
       drawer: !isDesktop ? _buildMobileNavigationDrawer(context) : null,
       body: Stack(
         children: [
-          // Background ambient glows
-          Positioned(
-            top: -120,
-            right: -120,
+          // Gradient background
+          Positioned.fill(
             child: Container(
-              width: 500,
-              height: 500,
+              decoration: const BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(1.0, -1.0),
+                  radius: 1.5,
+                  colors: [Color(0xFF0A0525), AppTheme.backgroundColor],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: -120, right: -120,
+            child: Container(
+              width: 500, height: 500,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryBlue.withOpacity(0.06),
-                    blurRadius: 150,
-                    spreadRadius: 80,
-                  ),
-                ],
+                boxShadow: AppTheme.glowPurple(intensity: 0.08, blur: 180),
               ),
             ),
           ),
@@ -113,6 +117,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       case 2: tabTitle = 'DRIVER MANAGEMENT DATASHEET'; break;
       case 3: tabTitle = 'AUTOMATED STRATEGIC INSIGHTS'; break;
       case 4: tabTitle = 'TELEMETRY KPI DASHBOARD'; break;
+      case 5: tabTitle = 'SPEED VIOLATION RECORDS'; break;
     }
 
     return Row(
@@ -128,13 +133,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                tabTitle,
+              GradientText(
+                text: tabTitle,
+                gradient: AppTheme.purpleToBlue,
                 style: TextStyle(
                   fontSize: isDesktop ? 22 : 16,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.0,
-                  color: Colors.white,
                 ),
               ),
               const SizedBox(height: 2),
@@ -145,19 +150,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ],
           ),
         ),
-        
         // Filter trigger button
-        ElevatedButton.icon(
-          onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.primaryBlue.withOpacity(0.1),
-            foregroundColor: AppTheme.primaryBlue,
-            side: BorderSide(color: AppTheme.primaryBlue.withOpacity(0.3)),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        GestureDetector(
+          onTap: () => _scaffoldKey.currentState?.openEndDrawer(),
+          child: const NeonBadge(
+            label: 'FILTERS',
+            color: AppTheme.accentPurple,
+            icon: Icons.filter_alt_outlined,
           ),
-          icon: const Icon(Icons.filter_alt_outlined, size: 16),
-          label: const Text('FILTERS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
         ),
       ],
     );
@@ -170,6 +170,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       case 2: return const DriverTableTab();
       case 3: return const InsightsTab();
       case 4: return const TelemetryKpiDashboard();
+      case 5: return const SpeedViolationsTab();
       default: return const SizedBox.shrink();
     }
   }
@@ -193,42 +194,47 @@ class _AdminDashboardState extends State<AdminDashboard> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             children: [
-              _buildKPICard('TOTAL REGISTERED DRIVERS', '${stats.totalDrivers}', Icons.people_outline, Colors.tealAccent),
-              _buildKPICard('TOTAL FLEET VEHICLES', '${stats.totalVehicles}', Icons.directions_car_rounded, AppTheme.primaryBlue),
-              _buildKPICard('ACTIVE OPERATIONAL VEHICLES', '${stats.activeVehicles}', Icons.check_circle_outline, Colors.greenAccent),
-              _buildKPICard('GARAGE MODE STATUS', '${stats.garageVehicles}', Icons.build_circle_outlined, Colors.orangeAccent),
-              _buildKPICard('AVERAGE ESTIMATED RANGE', '${stats.averageRange.toStringAsFixed(0)} KM', Icons.bolt, AppTheme.primaryBlue),
-              _buildKPICard('AVERAGE FLEET EFFICIENCY', '${stats.averageEfficiency.toStringAsFixed(0)}%', Icons.speed_rounded, Colors.tealAccent),
-              _buildKPICard('FLEET MONTHLY INCOME AVG', '\$${stats.averageMonthlyIncome.toStringAsFixed(0)}', Icons.monetization_on_outlined, Colors.amberAccent),
-              _buildKPICard('TOTAL RANGE PREDICTIONS', '${stats.totalPredictions}', Icons.history_rounded, Colors.white),
+              AnimatedStatCard(title: 'TOTAL REGISTERED DRIVERS', value: '${stats.totalDrivers}', icon: Icons.people_outline, color: AppTheme.primaryBlue),
+              AnimatedStatCard(title: 'TOTAL FLEET VEHICLES', value: '${stats.totalVehicles}', icon: Icons.directions_car_rounded, color: AppTheme.accentPurple),
+              AnimatedStatCard(title: 'ACTIVE OPERATIONAL', value: '${stats.activeVehicles}', icon: Icons.check_circle_outline, color: AppTheme.neonGreen),
+              AnimatedStatCard(title: 'GARAGE MODE STATUS', value: '${stats.garageVehicles}', icon: Icons.build_circle_outlined, color: AppTheme.amberAlert),
+              AnimatedStatCard(title: 'AVG ESTIMATED RANGE', value: '${stats.averageRange.toStringAsFixed(0)} KM', icon: Icons.bolt, color: AppTheme.primaryBlue),
+              AnimatedStatCard(title: 'AVG FLEET EFFICIENCY', value: '${stats.averageEfficiency.toStringAsFixed(0)}%', icon: Icons.speed_rounded, color: AppTheme.neonGreen),
+              AnimatedStatCard(title: 'FLEET MONTHLY INCOME', value: '\$${stats.averageMonthlyIncome.toStringAsFixed(0)}', icon: Icons.monetization_on_outlined, color: AppTheme.amberAlert),
+              AnimatedStatCard(title: 'TOTAL PREDICTIONS', value: '${stats.totalPredictions}', icon: Icons.history_rounded, color: AppTheme.accentPurple),
             ],
           ),
           
           const SizedBox(height: 24),
           
           // Fleet overview text info
-          GlassCard(
+          NeonGlassCard(
+            accentColor: AppTheme.accentPurple,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'SYSTEM TELEMETRY SUMMARY',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 0.5, color: AppTheme.primaryBlue),
-                ),
+                Row(children: [
+                  const Icon(Icons.terminal_rounded, color: AppTheme.accentPurple, size: 20),
+                  const SizedBox(width: 10),
+                  GradientText(
+                    text: 'SYSTEM TELEMETRY SUMMARY',
+                    gradient: AppTheme.purpleToBlue,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 0.5),
+                  ),
+                ]),
                 const Divider(color: AppTheme.glassBorderColor, height: 20),
                 const SizedBox(height: 8),
                 const Text(
                   'The Drive Analysis Platform is currently connected in Demo mode. Real-time predictions are simulated using dynamic motor formulas. Applying global filters on the right pane will immediately re-index the KPIs, visualizations, spreadsheet exports, and insight triggers.',
-                  style: TextStyle(color: Colors.white, fontSize: 13, height: 1.5),
+                  style: TextStyle(color: Colors.white, fontSize: 13, height: 1.6),
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Icon(Icons.circle, color: Colors.greenAccent, size: 10),
-                    const SizedBox(width: 8),
-                    const Text('Telemetry Database Status: Synchronized (In-Memory Fallback)', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-                  ],
-                )
+                Row(children: [
+                  const PulsingDot(color: AppTheme.neonGreen, size: 8),
+                  const SizedBox(width: 8),
+                  const Text('Telemetry Database: Synchronized (In-Memory Fallback)',
+                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                ]),
               ],
             ),
           )
@@ -271,70 +277,74 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   Widget _buildDesktopSidebar(BuildContext context) {
     return Container(
-      width: 250,
+      width: 260,
       decoration: const BoxDecoration(
-        color: Color(0xFF0D0D18),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF080818), Color(0xFF0A0A16)],
+        ),
         border: Border(right: BorderSide(color: AppTheme.glassBorderColor, width: 0.8)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Icon(Icons.auto_graph_rounded, color: AppTheme.primaryBlue, size: 28),
-              const SizedBox(width: 8),
-              const Text(
-                'DAP FLEET',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 1.0),
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                gradient: AppTheme.purpleToBlue,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: AppTheme.glowPurple(intensity: 0.3, blur: 16),
               ),
-            ],
-          ),
-          const SizedBox(height: 48),
+              child: const Icon(Icons.auto_graph_rounded, color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Text('DAP FLEET',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, letterSpacing: 1.0)),
+          ]),
+          const SizedBox(height: 40),
 
-          // Menu items
           _buildSidebarTile(0, 'KPI Dashboard', Icons.dashboard_outlined),
           _buildSidebarTile(1, '20 Visualizations', Icons.analytics_outlined),
           _buildSidebarTile(2, 'Driver Table', Icons.table_view_outlined),
           _buildSidebarTile(3, 'Automated Insights', Icons.psychology_outlined),
           _buildSidebarTile(4, 'Telemetry KPIs', Icons.insert_chart_outlined),
-          
+          _buildSidebarTile(5, 'Speed Violations', Icons.report_problem_outlined),
+
           const Spacer(),
 
-          // Profile admin details
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.02),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.glassBorderColor, width: 0.8),
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: AppTheme.primaryBlue.withOpacity(0.15),
-                  child: const Icon(Icons.admin_panel_settings_rounded, color: AppTheme.primaryBlue),
+          NeonGlassCard(
+            accentColor: AppTheme.accentPurple,
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              Container(
+                width: 38, height: 38,
+                decoration: BoxDecoration(
+                  gradient: AppTheme.purpleToBlue,
+                  shape: BoxShape.circle,
+                  boxShadow: AppTheme.glowPurple(intensity: 0.3, blur: 10),
                 ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Administrator', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                      Text('System Node', style: TextStyle(color: AppTheme.textSecondary, fontSize: 10)),
-                    ],
-                  ),
-                )
-              ],
-            ),
+                child: const Icon(Icons.admin_panel_settings_rounded, color: Colors.white, size: 18),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Administrator', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  Text('System Node', style: TextStyle(color: AppTheme.textSecondary, fontSize: 10)),
+                ]),
+              ),
+            ]),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
-          ListTile(
-            onTap: _logout,
-            leading: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 20),
-            title: const Text('LOGOUT', style: TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
-            contentPadding: EdgeInsets.zero,
+          GlassButton(
+            text: 'LOGOUT',
+            color: AppTheme.criticalRed,
+            color2: const Color(0xFFFF6B00),
+            icon: Icons.logout_rounded,
+            onPressed: _logout,
           ),
         ],
       ),
@@ -343,36 +353,31 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   Widget _buildSidebarTile(int index, String label, IconData icon) {
     final isSelected = _activeTab == index;
+    final accent = AppTheme.accentPurple;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
+      padding: const EdgeInsets.only(bottom: 6),
       child: InkWell(
         onTap: () => setState(() => _activeTab = index),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          duration: const Duration(milliseconds: 220),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? AppTheme.primaryBlue.withOpacity(0.08) : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected ? AppTheme.primaryBlue.withOpacity(0.2) : Colors.transparent,
-              width: 0.8,
-            ),
+            color: isSelected ? accent.withValues(alpha: 0.12) : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: isSelected
+                ? Border.all(color: accent.withValues(alpha: 0.35), width: 0.8)
+                : null,
           ),
-          child: Row(
-            children: [
-              Icon(icon, color: isSelected ? AppTheme.primaryBlue : AppTheme.textSecondary, size: 20),
-              const SizedBox(width: 16),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : AppTheme.textSecondary,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
+          child: Row(children: [
+            Icon(icon, color: isSelected ? accent : AppTheme.textSecondary, size: 18),
+            const SizedBox(width: 14),
+            Text(label, style: TextStyle(
+              color: isSelected ? Colors.white : AppTheme.textSecondary,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              fontSize: 13,
+            )),
+          ]),
         ),
       ),
     );
@@ -427,6 +432,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 title: const Text('Telemetry KPIs'),
                 onTap: () {
                   setState(() => _activeTab = 4);
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.report_problem_outlined, color: Colors.white),
+                title: const Text('Speed Violations'),
+                onTap: () {
+                  setState(() => _activeTab = 5);
                   Navigator.pop(context);
                 },
               ),

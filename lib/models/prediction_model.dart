@@ -27,6 +27,7 @@ class PredictionModel {
   final double vehicleUtilizationScore; // 18. Vehicle Utilization Score (%)
   final double driverEfficiencyScore; // 19. Driver Efficiency Score (%)
   final double overallVehicleHealth; // 20. Overall Vehicle Health (%)
+  final double speedKmph;            // Speed at time of prediction (km/h)
 
   PredictionModel({
     this.id,
@@ -55,6 +56,7 @@ class PredictionModel {
     required this.vehicleUtilizationScore,
     required this.driverEfficiencyScore,
     required this.overallVehicleHealth,
+    this.speedKmph = 0,
   });
 
   factory PredictionModel.fromJson(Map<String, dynamic> json) {
@@ -85,6 +87,7 @@ class PredictionModel {
       vehicleUtilizationScore: (json['vehicle_utilization_score'] as num).toDouble(),
       driverEfficiencyScore: (json['driver_efficiency_score'] as num).toDouble(),
       overallVehicleHealth: (json['overall_vehicle_health'] as num).toDouble(),
+      speedKmph: (json['speed_kmph'] as num? ?? 0).toDouble(),
     );
   }
 
@@ -116,6 +119,7 @@ class PredictionModel {
       'vehicle_utilization_score': vehicleUtilizationScore,
       'driver_efficiency_score': driverEfficiencyScore,
       'overall_vehicle_health': overallVehicleHealth,
+      'speed_kmph': speedKmph,
     };
   }
 }

@@ -61,10 +61,14 @@ class _DriverAnalyticsScreenState extends State<DriverAnalyticsScreen> {
   // ── chart helpers ─────────────────────────────────────────────────────────
 
   Widget _chartCard(String title, Widget body, {double height = 200}) {
-    return GlassCard(
+    return NeonGlassCard(
+      accentColor: AppTheme.primaryBlue,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.bold,
-            fontSize: 12, color: Colors.white)),
+        GradientText(
+          text: title,
+          gradient: AppTheme.primaryGradient,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+        ),
         const Divider(color: AppTheme.glassBorderColor, height: 14),
         SizedBox(height: height, child: body),
       ]),
@@ -110,7 +114,7 @@ class _DriverAnalyticsScreenState extends State<DriverAnalyticsScreen> {
   FlGridData _grid() => FlGridData(
     show: true, drawVerticalLine: false,
     getDrawingHorizontalLine: (_) =>
-        FlLine(color: Colors.white.withOpacity(0.04), strokeWidth: 1),
+        FlLine(color: Colors.white.withValues(alpha: 0.04), strokeWidth: 1),
   );
 
   // 1 – Battery health over time (line)
@@ -130,9 +134,9 @@ class _DriverAnalyticsScreenState extends State<DriverAnalyticsScreen> {
     return LineChart(LineChartData(
       lineBarsData: [
         LineChartBarData(
-          spots: spots, color: Colors.greenAccent, isCurved: true, barWidth: 2,
+          spots: spots, color: AppTheme.neonGreen, isCurved: true, barWidth: 2,
           dotData: const FlDotData(show: false),
-          belowBarData: BarAreaData(show: true, color: Colors.greenAccent.withOpacity(0.07)),
+          belowBarData: BarAreaData(show: true, color: AppTheme.neonGreen.withValues(alpha: 0.08)),
         ),
       ],
       titlesData: _td(
@@ -146,7 +150,7 @@ class _DriverAnalyticsScreenState extends State<DriverAnalyticsScreen> {
           tooltipRoundedRadius: 8,
           getTooltipItems: (ss) => ss.map((s) => LineTooltipItem(
             '${s.y.toStringAsFixed(1)}%',
-            const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 12),
+            TextStyle(color: AppTheme.neonGreen, fontWeight: FontWeight.bold, fontSize: 12),
           )).toList(),
         ),
       ),
@@ -177,7 +181,7 @@ class _DriverAnalyticsScreenState extends State<DriverAnalyticsScreen> {
           BarChartRodData(
             toY: subset[i].incomeGenerated, width: touched ? 10 : 6,
             gradient: LinearGradient(
-              colors: [Colors.greenAccent.withOpacity(0.4), Colors.greenAccent],
+              colors: [AppTheme.neonGreen.withValues(alpha: 0.4), AppTheme.neonGreen],
               begin: Alignment.bottomCenter, end: Alignment.topCenter,
             ),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
@@ -206,8 +210,10 @@ class _DriverAnalyticsScreenState extends State<DriverAnalyticsScreen> {
       else if (s < 110) counts[4]++;
       else              counts[5]++;
     }
-    final colors = [Colors.tealAccent, Colors.greenAccent, AppTheme.primaryBlue,
-                    Colors.amberAccent, Colors.orangeAccent, Colors.redAccent];
+    final colors = [
+      AppTheme.primaryBlue, AppTheme.neonGreen, AppTheme.accentPurple,
+      AppTheme.amberAlert, AppTheme.criticalRed, Colors.tealAccent,
+    ];
 
     return BarChart(BarChartData(
       barTouchData: BarTouchData(
@@ -252,7 +258,7 @@ class _DriverAnalyticsScreenState extends State<DriverAnalyticsScreen> {
           belowBarData: BarAreaData(
             show: true,
             gradient: LinearGradient(
-              colors: [AppTheme.primaryBlue.withOpacity(0.18), Colors.transparent],
+              colors: [AppTheme.primaryBlue.withValues(alpha: 0.18), Colors.transparent],
               begin: Alignment.topCenter, end: Alignment.bottomCenter,
             ),
           ),
@@ -288,12 +294,12 @@ class _DriverAnalyticsScreenState extends State<DriverAnalyticsScreen> {
     return LineChart(LineChartData(
       lineBarsData: [
         LineChartBarData(
-          spots: spots, color: Colors.amberAccent, isCurved: true, barWidth: 2,
+          spots: spots, color: AppTheme.amberAlert, isCurved: true, barWidth: 2,
           dotData: const FlDotData(show: false),
           belowBarData: BarAreaData(
             show: true,
             gradient: LinearGradient(
-              colors: [Colors.amberAccent.withOpacity(0.15), Colors.transparent],
+              colors: [AppTheme.amberAlert.withValues(alpha: 0.15), Colors.transparent],
               begin: Alignment.topCenter, end: Alignment.bottomCenter,
             ),
           ),
@@ -356,13 +362,25 @@ class _DriverAnalyticsScreenState extends State<DriverAnalyticsScreen> {
 
     return Scaffold(
       body: Stack(children: [
+        // Gradient bg
+        Positioned.fill(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment(-1, -1),
+                radius: 1.5,
+                colors: [Color(0xFF051525), AppTheme.backgroundColor],
+              ),
+            ),
+          ),
+        ),
         // Ambient glows
         Positioned(top: -100, right: -100, child: Container(width: 350, height: 350,
-          decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
-            BoxShadow(color: AppTheme.primaryBlue.withOpacity(0.07), blurRadius: 150, spreadRadius: 50)]))),
+          decoration: BoxDecoration(shape: BoxShape.circle,
+              boxShadow: AppTheme.glowBlue(intensity: 0.07, blur: 150)))),
         Positioned(bottom: -60, left: -60, child: Container(width: 250, height: 250,
-          decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
-            BoxShadow(color: Colors.purpleAccent.withOpacity(0.05), blurRadius: 100, spreadRadius: 30)]))),
+          decoration: BoxDecoration(shape: BoxShape.circle,
+              boxShadow: AppTheme.glowPurple(intensity: 0.06, blur: 100)))),
 
         SafeArea(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
 
@@ -370,30 +388,38 @@ class _DriverAnalyticsScreenState extends State<DriverAnalyticsScreen> {
           Padding(
             padding: EdgeInsets.symmetric(horizontal: isDesktop ? 32 : 16, vertical: 16),
             child: Row(children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
-              const SizedBox(width: 8),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('MY VEHICLE ANALYTICS', style: TextStyle(
-                    fontWeight: FontWeight.w900, fontSize: 20,
-                    letterSpacing: 1.2, color: Colors.white)),
-                Text(vehicle?.carName ?? '–',
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-              ]),
-              const Spacer(),
-              if (!_loading)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryBlue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.primaryBlue.withOpacity(0.3)),
+                    borderRadius: BorderRadius.circular(10),
+                    color: Colors.white.withValues(alpha: 0.06),
+                    border: Border.all(
+                        color: AppTheme.glassBorderColor.withValues(alpha: 0.5)),
                   ),
-                  child: Text('${_records.length} trips',
-                      style: const TextStyle(color: AppTheme.primaryBlue,
-                          fontWeight: FontWeight.bold, fontSize: 11)),
+                  child: const Icon(Icons.arrow_back_rounded,
+                      color: Colors.white, size: 20),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  GradientText(
+                    text: 'MY VEHICLE ANALYTICS',
+                    gradient: AppTheme.primaryGradient,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: 1.2),
+                  ),
+                  Text(vehicle?.carName ?? '–',
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                ]),
+              ),
+              if (!_loading)
+                NeonBadge(
+                  label: '${_records.length} TRIPS',
+                  color: AppTheme.primaryBlue,
+                  icon: Icons.route_rounded,
                 ),
             ]),
           ),
@@ -477,12 +503,12 @@ class _KpiStrip extends StatelessWidget {
 
     final kpis = [
       _KD('TOTAL TRIPS',       '$n',                              Icons.route_rounded,             AppTheme.primaryBlue),
-      _KD('TOTAL INCOME',      '₹${_fmt(totalIncome)}',          Icons.currency_rupee_rounded,    Colors.greenAccent),
-      _KD('TOTAL DISTANCE',    '${_fmt(totalDist)} km',          Icons.map_outlined,              Colors.tealAccent),
-      _KD('ENERGY CONSUMED',   '${_fmt(totalEnergy)} kWh',       Icons.bolt_rounded,              Colors.amberAccent),
-      _KD('AVG BATTERY HEALTH','${avgBatt.toStringAsFixed(1)}%', Icons.battery_charging_full,     Colors.lightGreenAccent),
+      _KD('TOTAL INCOME',      '₹${_fmt(totalIncome)}',          Icons.currency_rupee_rounded,    AppTheme.neonGreen),
+      _KD('TOTAL DISTANCE',    '${_fmt(totalDist)} km',          Icons.map_outlined,              AppTheme.primaryBlue),
+      _KD('ENERGY CONSUMED',   '${_fmt(totalEnergy)} kWh',       Icons.bolt_rounded,              AppTheme.amberAlert),
+      _KD('AVG BATTERY HEALTH','${avgBatt.toStringAsFixed(1)}%', Icons.battery_charging_full,     AppTheme.neonGreen),
       _KD('AVG SPEED',         '${avgSpeed.toStringAsFixed(1)} km/h', Icons.speed_rounded,        AppTheme.primaryBlue),
-      _KD('SAFETY EVENTS',     '$safetyTotal',                   Icons.warning_amber_rounded,     Colors.orangeAccent),
+      _KD('SAFETY EVENTS',     '$safetyTotal',                   Icons.warning_amber_rounded,     AppTheme.amberAlert),
     ];
 
     return GridView.count(
@@ -508,28 +534,11 @@ class _KpiCard extends StatelessWidget {
   const _KpiCard({required this.data});
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      gradientColors: [data.color.withOpacity(0.05), Colors.white.withOpacity(0.02)],
-      borderColor: data.color.withOpacity(0.2),
-      child: Row(children: [
-        Expanded(child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(data.label, style: const TextStyle(color: AppTheme.textSecondary,
-                fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-            const SizedBox(height: 4),
-            Text(data.value, style: const TextStyle(color: Colors.white,
-                fontSize: 16, fontWeight: FontWeight.bold)),
-          ],
-        )),
-        Container(
-          padding: const EdgeInsets.all(7),
-          decoration: BoxDecoration(color: data.color.withOpacity(0.12), shape: BoxShape.circle),
-          child: Icon(data.icon, color: data.color, size: 17),
-        ),
-      ]),
+    return AnimatedStatCard(
+      title: data.label,
+      value: data.value,
+      icon: data.icon,
+      color: data.color,
     );
   }
 }
@@ -550,13 +559,17 @@ class _SafetyPanel extends StatelessWidget {
     final avgSusp   = records.map((r) => r.suspensionHealthPct).reduce((a, b) => a + b) / records.length;
     final maxDays   = records.map((r) => r.daysSinceLastService).reduce((a, b) => a > b ? a : b);
 
-    return GlassCard(
+    return NeonGlassCard(
+      accentColor: AppTheme.amberAlert,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(Icons.shield_outlined, color: Colors.orangeAccent, size: 20),
+          const Icon(Icons.shield_outlined, color: AppTheme.amberAlert, size: 20),
           const SizedBox(width: 10),
-          const Text('SAFETY & MAINTENANCE SUMMARY',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5)),
+          GradientText(
+            text: 'SAFETY & MAINTENANCE SUMMARY',
+            gradient: AppTheme.amberGradient,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5),
+          ),
         ]),
         const Divider(color: AppTheme.glassBorderColor, height: 16),
         Wrap(spacing: 20, runSpacing: 12, children: [
@@ -631,13 +644,17 @@ class _WeatherBreakdown extends StatelessWidget {
     final colors  = [AppTheme.primaryBlue, const Color(0xFF00E5A0), Colors.amberAccent,
                      Colors.purpleAccent, Colors.orangeAccent];
 
-    return GlassCard(
+    return NeonGlassCard(
+      accentColor: AppTheme.primaryBlue,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           const Icon(Icons.cloud_outlined, color: AppTheme.primaryBlue, size: 20),
           const SizedBox(width: 10),
-          const Text('TRIPS BY WEATHER CONDITION',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5)),
+          GradientText(
+            text: 'TRIPS BY WEATHER CONDITION',
+            gradient: AppTheme.primaryGradient,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5),
+          ),
         ]),
         const Divider(color: AppTheme.glassBorderColor, height: 16),
         ...entries.asMap().entries.map((e) {
@@ -657,7 +674,7 @@ class _WeatherBreakdown extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
                   value: pct, minHeight: 6,
-                  backgroundColor: Colors.white.withOpacity(0.05),
+                  backgroundColor: Colors.white.withValues(alpha: 0.05),
                   valueColor: AlwaysStoppedAnimation<Color>(color),
                 ),
               ),

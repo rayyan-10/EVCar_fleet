@@ -52,8 +52,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   void initState() {
     super.initState();
-    _emailController.text = Provider.of<AuthController>(context, listen: false).currentUser?.fakeEmail ?? '';
-    
+    final authUser = Provider.of<AuthController>(context, listen: false).currentUser;
+    _emailController.text = authUser?.fakeEmail ?? '';
+
     // Autofill current date/time info
     final now = DateTime.now();
     _currentDateController.text = DateFormat('yyyy-MM-dd').format(now);
@@ -81,6 +82,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _currentMonthController.text = currentVehicle.currentMonth;
       _locationController.text = currentVehicle.location ?? '';
       _isDriverIdUnique = true; // Since it matches their own ID
+    } else {
+      // New profile — pre-fill driver name from the auth username
+      // Convert 'john_doe' → 'John Doe'
+      if (authUser != null) {
+        _driverNameController.text = authUser.username
+            .replaceAll('_', ' ')
+            .replaceAll('-', ' ')
+            .split(' ')
+            .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
+            .join(' ');
+      }
     }
   }
 
@@ -223,34 +235,48 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Background ambient glows
-          Positioned(
-            top: -50,
-            right: -50,
+          // Gradient background
+          Positioned.fill(
             child: Container(
-              width: 350,
-              height: 350,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppTheme.primaryBlue.withOpacity(0.12),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryBlue.withOpacity(0.12),
-                    blurRadius: 100,
-                    spreadRadius: 0,
-                  ),
-                ],
+              decoration: const BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(-0.8, -0.8),
+                  radius: 1.4,
+                  colors: [Color(0xFF050A1E), AppTheme.backgroundColor],
+                ),
               ),
             ),
           ),
-          
+          // Ambient glow orbs
+          Positioned(
+            top: -80, right: -80,
+            child: Container(
+              width: 400, height: 400,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: AppTheme.glowBlue(intensity: 0.12, blur: 180),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -60, left: -60,
+            child: Container(
+              width: 300, height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: AppTheme.glowPurple(intensity: 0.10, blur: 150),
+              ),
+            ),
+          ),
+
           Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40.0),
               child: Container(
                 constraints: const BoxConstraints(maxWidth: 1100),
-                child: GlassCard(
-                  blur: 20,
+                child: NeonGlassCard(
+                  accentColor: AppTheme.primaryBlue,
+                  padding: const EdgeInsets.all(28),
                   child: Form(
                     key: _formKey,
                     child: Column(
@@ -263,12 +289,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  widget.isEditing ? 'EDIT VEHICLE DETAILS' : 'VEHICLE ONBOARDING',
+                                NeonBadge(
+                                  label: widget.isEditing
+                                      ? 'EDIT VEHICLE DETAILS'
+                                      : 'VEHICLE ONBOARDING',
+                                  color: AppTheme.primaryBlue,
+                                  icon: widget.isEditing
+                                      ? Icons.edit_rounded
+                                      : Icons.directions_car_rounded,
+                                ),
+                                const SizedBox(height: 10),
+                                GradientText(
+                                  text: widget.isEditing
+                                      ? 'Update Your Fleet Data'
+                                      : 'Configure Your Vehicle',
+                                  gradient: AppTheme.primaryGradient,
                                   style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.0,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.5,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -276,36 +315,59 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                   widget.isEditing
                                       ? 'Modify parameters below and re-predict'
                                       : 'Complete onboarding to access Driver Dashboard',
-                                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                                  style: const TextStyle(
+                                      color: AppTheme.textSecondary, fontSize: 13),
                                 ),
                               ],
                             ),
                             if (widget.isEditing)
                               IconButton(
-                                icon: const Icon(Icons.close, color: Colors.white),
+                                icon: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10),
+                                    color:
+                                        Colors.white.withValues(alpha: 0.06),
+                                    border: Border.all(
+                                        color: AppTheme.glassBorderColor),
+                                  ),
+                                  child: const Icon(Icons.close,
+                                      color: Colors.white, size: 18),
+                                ),
                                 onPressed: () => Navigator.pop(context),
                               ),
                           ],
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 28),
 
                         // Error indicator
                         if (driverController.errorMessage != null) ...[
                           Container(
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: Colors.redAccent.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(8),
+                              color: AppTheme.criticalRed.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                  color:
+                                      AppTheme.criticalRed.withValues(alpha: 0.3)),
                             ),
-                            child: Text(
-                              driverController.errorMessage!,
-                              style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.error_outline,
+                                    color: AppTheme.criticalRed, size: 18),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                    child: Text(driverController.errorMessage!,
+                                        style: const TextStyle(
+                                            color: AppTheme.criticalRed,
+                                            fontSize: 13))),
+                              ],
                             ),
                           ),
                           const SizedBox(height: 20),
                         ],
 
-                        // Custom Step indicator
+                        // Step indicator
                         _buildStepIndicator(),
                         const SizedBox(height: 32),
 
@@ -324,21 +386,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               OutlinedButton(
                                 onPressed: _prevStep,
                                 style: OutlinedButton.styleFrom(
-                                  side: const BorderSide(color: AppTheme.glassBorderColor),
-                                  padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 28),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  side: BorderSide(
+                                      color: AppTheme.glassBorderColor
+                                          .withValues(alpha: 0.8)),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 18, horizontal: 28),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14)),
                                 ),
-                                child: const Text('BACK', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                child: const Text('BACK',
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold)),
                               )
                             else
                               const SizedBox.shrink(),
-                            
                             GlassButton(
                               text: _currentStep < 2
-                                  ? 'CONTINUE'
-                                  : (widget.isEditing ? 'SAVE CHANGES' : 'COMPLETE ONBOARDING'),
+                                  ? 'CONTINUE →'
+                                  : (widget.isEditing
+                                      ? 'SAVE CHANGES'
+                                      : 'COMPLETE ONBOARDING'),
                               isLoading: driverController.isLoading,
-                              onPressed: _currentStep < 2 ? _nextStep : _saveOnboardingData,
+                              color: AppTheme.primaryBlue,
+                              color2: AppTheme.accentPurple,
+                              onPressed:
+                                  _currentStep < 2 ? _nextStep : _saveOnboardingData,
                             ),
                           ],
                         ),
@@ -355,61 +428,92 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _buildStepIndicator() {
-    final steps = ['Profile', 'Vehicle Specs', 'Operating State'];
+    final steps = [
+      ('Profile', Icons.person_outline_rounded),
+      ('Vehicle Specs', Icons.directions_car_outlined),
+      ('Operating State', Icons.settings_outlined),
+    ];
     return Row(
       children: List.generate(steps.length, (idx) {
         final isActive = idx == _currentStep;
         final isCompleted = idx < _currentStep;
+        final (label, icon) = steps[idx];
         return Expanded(
           child: Row(
             children: [
-              Container(
-                width: 28,
-                height: 28,
+              // Step orb
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isActive
-                      ? AppTheme.primaryBlue
-                      : isCompleted
-                          ? AppTheme.primaryBlue.withOpacity(0.2)
-                          : Colors.white.withOpacity(0.05),
+                  gradient: isActive || isCompleted
+                      ? AppTheme.primaryGradient
+                      : null,
+                  color: isActive || isCompleted
+                      ? null
+                      : Colors.white.withValues(alpha: 0.05),
                   border: Border.all(
-                    color: isActive ? AppTheme.primaryBlue : AppTheme.glassBorderColor,
-                    width: 1.5,
+                    color: isActive
+                        ? AppTheme.primaryBlue
+                        : isCompleted
+                            ? AppTheme.neonGreen
+                            : AppTheme.glassBorderColor,
+                    width: isActive ? 1.5 : 1.0,
                   ),
+                  boxShadow: isActive
+                      ? AppTheme.glowBlue(intensity: 0.4, blur: 14)
+                      : isCompleted
+                          ? AppTheme.glowGreen(intensity: 0.3, blur: 10)
+                          : [],
                 ),
                 child: Center(
                   child: isCompleted
-                      ? const Icon(Icons.check, size: 14, color: AppTheme.primaryBlue)
-                      : Text(
-                          '${idx + 1}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: isActive ? Colors.white : AppTheme.textSecondary,
-                          ),
-                        ),
+                      ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
+                      : Icon(icon,
+                          size: 16,
+                          color: isActive ? Colors.white : AppTheme.textSecondary),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  steps[idx],
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                    color: isActive ? Colors.white : AppTheme.textSecondary,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                        color: isActive
+                            ? Colors.white
+                            : isCompleted
+                                ? AppTheme.neonGreen
+                                : AppTheme.textSecondary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
               if (idx < steps.length - 1)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: Container(
-                    width: 30,
-                    height: 1,
-                    color: isCompleted ? AppTheme.primaryBlue : AppTheme.glassBorderColor,
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 400),
+                      height: 2,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(2),
+                        gradient: isCompleted
+                            ? AppTheme.cynaToGreen
+                            : null,
+                        color: isCompleted
+                            ? null
+                            : AppTheme.glassBorderColor,
+                      ),
+                    ),
                   ),
                 ),
             ],
@@ -733,27 +837,60 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 220),
         height: 110,
+        transform: Matrix4.identity()
+          ..translate(0.0, isSelected ? -4.0 : 0.0),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected ? AppTheme.primaryBlue : AppTheme.glassBorderColor,
+            color: isSelected
+                ? AppTheme.primaryBlue
+                : AppTheme.glassBorderColor,
             width: isSelected ? 1.5 : 0.8,
           ),
-          color: isSelected
-              ? AppTheme.primaryBlue.withOpacity(0.08)
-              : Colors.white.withOpacity(0.03),
+          gradient: isSelected
+              ? LinearGradient(
+                  colors: [
+                    AppTheme.primaryBlue.withValues(alpha: 0.15),
+                    AppTheme.accentPurple.withValues(alpha: 0.06),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : LinearGradient(
+                  colors: [
+                    Colors.white.withValues(alpha: 0.04),
+                    Colors.white.withValues(alpha: 0.02),
+                  ],
+                ),
+          boxShadow: isSelected
+              ? AppTheme.glowBlue(intensity: 0.18, blur: 16)
+              : [],
         ),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Row(
               children: [
-                Icon(icon, size: 20, color: isSelected ? AppTheme.primaryBlue : AppTheme.textSecondary),
-                const SizedBox(width: 8),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: isSelected
+                        ? AppTheme.primaryBlue.withValues(alpha: 0.2)
+                        : Colors.white.withValues(alpha: 0.05),
+                  ),
+                  child: Icon(icon,
+                      size: 18,
+                      color: isSelected
+                          ? AppTheme.primaryBlue
+                          : AppTheme.textSecondary),
+                ),
+                const SizedBox(width: 10),
                 Text(
                   title,
                   style: TextStyle(
@@ -762,15 +899,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     color: isSelected ? Colors.white : AppTheme.textSecondary,
                   ),
                 ),
+                if (isSelected) ...[
+                  const Spacer(),
+                  const Icon(Icons.check_circle_rounded,
+                      color: AppTheme.primaryBlue, size: 16),
+                ],
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               description,
               style: TextStyle(
                 fontSize: 11,
-                color: AppTheme.textSecondary.withOpacity(0.8),
-                height: 1.3,
+                color: isSelected
+                    ? Colors.white.withValues(alpha: 0.7)
+                    : AppTheme.textSecondary.withValues(alpha: 0.7),
+                height: 1.35,
               ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,

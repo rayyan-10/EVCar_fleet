@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/vehicle_model.dart';
+import '../models/user_model.dart';
 import '../services/supabase_service.dart';
 
 class DriverController extends ChangeNotifier {
@@ -19,12 +20,25 @@ class DriverController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> fetchVehicleData(String driverId) async {
+  Future<void> fetchVehicleData(String driverId, {UserModel? authUser}) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
     try {
       _currentVehicle = await _supabaseService.getVehicleData(driverId);
+
+      // Patch: if driverName is blank, derive it from the auth username
+      if (_currentVehicle != null &&
+          _currentVehicle!.driverName.trim().isEmpty &&
+          authUser != null) {
+        final formatted = authUser.username
+            .replaceAll('_', ' ')
+            .replaceAll('-', ' ')
+            .split(' ')
+            .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
+            .join(' ');
+        _currentVehicle = _currentVehicle!.copyWith(driverName: formatted);
+      }
     } catch (e) {
       _errorMessage = e.toString();
     } finally {

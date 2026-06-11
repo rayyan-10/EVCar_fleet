@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/vehicle_model.dart';
 import '../models/prediction_model.dart';
 import '../models/analytics_model.dart';
+import '../models/speed_violation_model.dart';
 import '../services/supabase_service.dart';
 import '../services/analytics_service.dart';
 
@@ -18,6 +19,7 @@ class AdminController extends ChangeNotifier {
   // Raw DB records cache
   List<VehicleModel> _allVehicles = [];
   List<PredictionModel> _allPredictions = [];
+  List<SpeedViolationModel> _violations = [];
 
   // Filtered lists
   List<PredictionModel> _filteredPredictions = [];
@@ -53,6 +55,7 @@ class AdminController extends ChangeNotifier {
   // Getters
   List<PredictionModel> get filteredPredictions => _filteredPredictions;
   List<VehicleModel> get allVehicles => _allVehicles;
+  List<SpeedViolationModel> get violations => _violations;
   AdminStatsModel get stats => _stats;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -89,6 +92,7 @@ class AdminController extends ChangeNotifier {
       await _supabaseService.getAllProfiles(); // fetched for completeness; used via vehicles
       _allVehicles = await _supabaseService.getAllVehicles();
       _allPredictions = await _supabaseService.getAllPredictions();
+      _violations = await _supabaseService.getAllViolations();
       
       applyFilters();
     } catch (e) {
@@ -398,10 +402,20 @@ class AdminController extends ChangeNotifier {
   void resetAdminState() {
     _allVehicles = [];
     _allPredictions = [];
+    _violations = [];
     _filteredPredictions = [];
     _stats = AdminStatsModel.empty();
     resetFilters();
     _currentPage = 1;
     notifyListeners();
+  }
+
+  Future<void> refreshViolations() async {
+    try {
+      _violations = await _supabaseService.getAllViolations();
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[ADMIN] Failed to refresh violations: $e');
+    }
   }
 }

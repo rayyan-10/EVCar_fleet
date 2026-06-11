@@ -1,12 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/vehicle_model.dart';
 import '../models/prediction_model.dart';
 import '../services/supabase_service.dart';
 import '../services/prediction_service.dart';
-
+import '../services/ev_range_api_service.dart';
 class PredictionController extends ChangeNotifier {
   final SupabaseService _supabaseService = SupabaseService();
   final PredictionService _predictionService = PredictionService();
+  final EvRangeApiService _evRangeApi = EvRangeApiService();
 
   PredictionModel? _activePrediction;
   List<PredictionModel> _history = [];
@@ -45,23 +47,87 @@ class PredictionController extends ChangeNotifier {
     }
   }
 
-  Future<bool> runPrediction(VehicleModel vehicle, double batteryPercentage) async {
+  Future<bool> runPrediction(VehicleModel vehicle, double batteryPercentage,
+      {double odometerKm = 0.0, double runningMode = 0.0,
+       double? energyConsumedKwh, double? maxRangeKm,
+       double batteryHealthPct = 91.5,
+       double speedKmph = 0.0}) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
     try {
-      // 1. Generate prediction using physics simulator
-      final prediction = _predictionService.predict(vehicle, batteryPercentage);
-      
-      // 2. Save prediction to Supabase database
+      // 1. Call FastAPI /predict — returns predicted_range_km + echoed input
+      double? mlRangeKm;
+      double resolvedEnergy  = energyConsumedKwh ?? vehicle.batteryCapacity * 0.20;
+      double resolvedMaxRange = maxRangeKm ?? vehicle.batteryCapacity * 8.0;
+      double backendRunMode  = runningMode == 0 ? 1.0 : 0.0; // flip: app 0=City→backend 1
+
+      try {
+        final input = {
+          'soc_end_pct':          batteryPercentage,
+          'battery_health_pct':   batteryHealthPct,
+          'battery_capacity_kwh': vehicle.batteryCapacity,
+          'max_range_km':         resolvedMaxRange,
+          'energy_consumed_kwh':  resolvedEnergy,
+          'odometer_km':          odometerKm,
+          'running_mode':         backendRunMode,
+        };
+        if (kDebugMode) debugPrint('[PREDICT] Input sent to FastAPI: $input');
+
+        final resp = await _evRangeApi.predictRange(
+          socEndPct:          batteryPercentage,
+          batteryHealthPct:   batteryHealthPct,
+          batteryCapacityKwh: vehicle.batteryCapacity,
+          maxRangeKm:         resolvedMaxRange,
+          energyConsumedKwh:  resolvedEnergy,
+          odometerKm:         odometerKm,
+          runningMode:        backendRunMode,
+        );
+
+        mlRangeKm        = resp.predictedRangeKm;
+        resolvedEnergy   = resp.energyConsumedKwh;
+        resolvedMaxRange = resp.maxRangeKm;
+        batteryHealthPct = resp.batteryHealthPct;
+
+        if (kDebugMode) debugPrint('[PREDICT] FastAPI response → predicted_range_km: $mlRangeKm km');
+      } catch (e) {
+        if (kDebugMode) debugPrint('[PREDICT] FastAPI unavailable, using physics fallback. Error: $e');
+      }
+
+      // 2. Build all 20 metrics using backend-confirmed values
+      final prediction = _predictionService.predict(
+        vehicle,
+        batteryPercentage,
+        mlRangeKm:          mlRangeKm,
+        batteryHealthPct:   batteryHealthPct,
+        batteryCapacityKwh: vehicle.batteryCapacity,
+        maxRangeKm:         resolvedMaxRange,
+        energyConsumedKwh:  resolvedEnergy,
+        odometerKm:         odometerKm,
+        runningMode:        backendRunMode,
+        speedKmph:          speedKmph,
+      );
+
+      // 3. Save to Supabase
       await _supabaseService.savePrediction(prediction);
-      
       _activePrediction = prediction;
-      
-      // 3. Re-fetch history to include the new prediction
+
+      // 4. Check speed violation (>100 km/h)
+      if (speedKmph > 100) {
+        await _supabaseService.checkAndSaveViolation(
+          driverId:     vehicle.driverId,
+          driverIdStr:  vehicle.driverIdStr,
+          carName:      vehicle.carName,
+          speedKmph:    speedKmph,
+          predictionId: prediction.id,
+        );
+        if (kDebugMode) debugPrint('[VIOLATION] Speed $speedKmph km/h > 100 — violation recorded.');
+      }
+
+      // 5. Refresh history
       _history = await _supabaseService.getPredictions(vehicle.driverId);
       _applyFilters();
-      
+
       return true;
     } catch (e) {
       _errorMessage = e.toString();
@@ -71,7 +137,6 @@ class PredictionController extends ChangeNotifier {
       notifyListeners();
     }
   }
-
   void setFilterType(String type, {DateTime? start, DateTime? end}) {
     _historyFilterType = type;
     _customStart = start;

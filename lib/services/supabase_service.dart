@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_model.dart';
 import '../models/vehicle_model.dart';
 import '../models/prediction_model.dart';
+import '../models/speed_violation_model.dart';
 class SupabaseService {
   static final SupabaseService _instance = SupabaseService._internal();
   factory SupabaseService() => _instance;
@@ -23,6 +24,7 @@ class SupabaseService {
   final List<UserModel> _mockUsers = [];
   final List<VehicleModel> _mockVehicles = [];
   final List<PredictionModel> _mockPredictions = [];
+  final List<SpeedViolationModel> _mockViolations = [];
 
   UserModel? _currentMockUser;
 
@@ -234,6 +236,40 @@ class SupabaseService {
       driverEfficiencyScore: 55.0,
       overallVehicleHealth: 93.0,
     ));
+
+    // Pre-populate some speed violations
+    _mockViolations.addAll([
+      SpeedViolationModel(
+        id: 'vio-1',
+        driverId: 'driver-1',
+        driverIdStr: 'DRV-TESLA-01',
+        carName: 'Tesla Model 3 Long Range',
+        speedKmph: 110.0,
+        limitKmph: 100.0,
+        excessKmph: 10.0,
+        violatedAt: referenceDate.subtract(const Duration(days: 2, hours: 3)),
+      ),
+      SpeedViolationModel(
+        id: 'vio-2',
+        driverId: 'driver-4',
+        driverIdStr: 'DRV-ETRON-04',
+        carName: 'Audi e-tron GT',
+        speedKmph: 130.0,
+        limitKmph: 100.0,
+        excessKmph: 30.0,
+        violatedAt: referenceDate.subtract(const Duration(days: 4, hours: 1)),
+      ),
+      SpeedViolationModel(
+        id: 'vio-3',
+        driverId: 'driver-5',
+        driverIdStr: 'DRV-TAYCAN-05',
+        carName: 'Porsche Taycan Turbo S',
+        speedKmph: 145.0,
+        limitKmph: 100.0,
+        excessKmph: 45.0,
+        violatedAt: referenceDate.subtract(const Duration(days: 1, hours: 5)),
+      ),
+    ]);
   }
 
   // ==========================================
@@ -490,6 +526,71 @@ class SupabaseService {
           .from('predictions')
           .select();
       return data.map((json) => PredictionModel.fromJson(json)).toList();
+    }
+  }
+
+  // ==========================================
+  // SPEED VIOLATION APIs
+  // ==========================================
+
+  static const double _speedLimitKmph = 100.0;
+
+  /// Records a violation if speed > 100 km/h. Returns the saved violation or null.
+  Future<SpeedViolationModel?> checkAndSaveViolation({
+    required String driverId,
+    required String driverIdStr,
+    required String carName,
+    required double speedKmph,
+    String? predictionId,
+  }) async {
+    if (speedKmph <= _speedLimitKmph) return null;
+
+    final violation = SpeedViolationModel(
+      driverId:     driverId,
+      driverIdStr:  driverIdStr,
+      carName:      carName,
+      speedKmph:    speedKmph,
+      limitKmph:    _speedLimitKmph,
+      excessKmph:   speedKmph - _speedLimitKmph,
+      predictionId: predictionId,
+      violatedAt:   DateTime.now(),
+    );
+
+    if (_isDemoMode) {
+      final saved = SpeedViolationModel(
+        id: 'vio-${DateTime.now().millisecondsSinceEpoch}',
+        driverId:     violation.driverId,
+        driverIdStr:  violation.driverIdStr,
+        carName:      violation.carName,
+        speedKmph:    violation.speedKmph,
+        limitKmph:    violation.limitKmph,
+        excessKmph:   violation.excessKmph,
+        predictionId: violation.predictionId,
+        violatedAt:   violation.violatedAt,
+      );
+      _mockViolations.add(saved);
+      return saved;
+    } else {
+      final result = await Supabase.instance.client
+          .from('speed_violations')
+          .insert(violation.toJson())
+          .select()
+          .single();
+      return SpeedViolationModel.fromJson(result);
+    }
+  }
+
+  Future<List<SpeedViolationModel>> getAllViolations() async {
+    if (_isDemoMode) {
+      final list = [..._mockViolations];
+      list.sort((a, b) => b.violatedAt.compareTo(a.violatedAt));
+      return list;
+    } else {
+      final List<dynamic> data = await Supabase.instance.client
+          .from('speed_violations')
+          .select()
+          .order('violated_at', ascending: false);
+      return data.map((j) => SpeedViolationModel.fromJson(j)).toList();
     }
   }
 }
