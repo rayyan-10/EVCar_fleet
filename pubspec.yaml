@@ -64,6 +64,7 @@ flutter:
 
   assets:
     - assets/telemetry.csv
+    - assets/telemetry_merged1.csv
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
