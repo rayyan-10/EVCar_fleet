@@ -1,6 +1,7 @@
 class TelemetryRecord {
   final DateTime timestamp;
   final String driverId;
+  final String driverName;
   final String vehicleId;
   final String brand;
   final String carName;
@@ -37,6 +38,7 @@ class TelemetryRecord {
   const TelemetryRecord({
     required this.timestamp,
     required this.driverId,
+    required this.driverName,
     required this.vehicleId,
     required this.brand,
     required this.carName,
@@ -71,64 +73,92 @@ class TelemetryRecord {
     required this.vehicleActive,
   });
 
-  factory TelemetryRecord.fromCsvRow(List<String> row) {
+  factory TelemetryRecord.fromCsvRow(List<String> row, Map<String, int> colMap) {
+    // Helper to get value by column name or fallback to index
+    double getDouble(String key, int fallbackIndex) {
+      final idx = colMap[key] ?? colMap['${key}_x'] ?? colMap['${key}_y'] ?? fallbackIndex;
+      if (idx >= row.length) return 0;
+      return double.tryParse(row[idx]) ?? 0;
+    }
+
+    int getInt(String key, int fallbackIndex) {
+      final idx = colMap[key] ?? colMap['${key}_x'] ?? colMap['${key}_y'] ?? fallbackIndex;
+      if (idx >= row.length) return 0;
+      return int.tryParse(row[idx]) ?? 0;
+    }
+
+    String getString(String key, int fallbackIndex) {
+      final idx = colMap[key] ?? colMap['${key}_x'] ?? colMap['${key}_y'] ?? fallbackIndex;
+      if (idx >= row.length) return '';
+      return row[idx].trim();
+    }
+
     DateTime ts;
     try {
-      ts = _parseDate(row[0].trim());
+      final dateStr = getString('timestamp', 0);
+      ts = _parseDate(dateStr);
     } catch (_) {
       ts = DateTime.now();
     }
 
     return TelemetryRecord(
       timestamp: ts,
-      driverId: row[1].trim(),
-      vehicleId: row[2].trim(),
-      brand: row[3].trim(),
-      carName: row[4].trim(),
-      batteryCapacityKwh: double.tryParse(row[5]) ?? 0,
-      maxRangeKm: double.tryParse(row[6]) ?? 0,
-      vehicleWeightKg: double.tryParse(row[7]) ?? 0,
-      motorPowerKw: double.tryParse(row[8]) ?? 0,
-      runningMode: int.tryParse(row[9]) ?? 0,
-      tripDistanceKm: double.tryParse(row[10]) ?? 0,
-      tripDurationHr: double.tryParse(row[11]) ?? 0,
-      incomeGenerated: double.tryParse(row[12]) ?? 0,
-      avgSpeedKmph: double.tryParse(row[13]) ?? 0,
-      maxSpeedKmph: double.tryParse(row[14]) ?? 0,
-      overspeedEvents: int.tryParse(row[15]) ?? 0,
-      hardBrakingEvents: int.tryParse(row[16]) ?? 0,
-      rapidAccelerationEvents: int.tryParse(row[17]) ?? 0,
-      idleTimeMinutes: double.tryParse(row[18]) ?? 0,
-      weatherCondition: row[19].trim(),
-      trafficDensity: row[20].trim(),
-      ambientTemperature: double.tryParse(row[21]) ?? 0,
-      socStartPct: double.tryParse(row[22]) ?? 0,
-      socEndPct: double.tryParse(row[23]) ?? 0,
-      batteryTemperature: double.tryParse(row[24]) ?? 0,
-      batteryCycles: int.tryParse(row[25]) ?? 0,
-      batteryHealthPct: double.tryParse(row[26]) ?? 0,
-      energyConsumedKwh: double.tryParse(row[27]) ?? 0,
-      odometerKm: double.tryParse(row[28]) ?? 0,
-      brakeWearPct: double.tryParse(row[29]) ?? 0,
-      suspensionHealthPct: double.tryParse(row[30]) ?? 0,
-      daysSinceLastService: int.tryParse(row[31]) ?? 0,
-      vehicleCondition: int.tryParse(row[32]) ?? 0,
-      vehicleActive: int.tryParse(row[33]) ?? 0,
+      driverId: getString('driver_id', 1),
+      driverName: getString('driver_name', 56),
+      vehicleId: getString('vehicle_id', 2),
+      brand: getString('brand', 3),
+      carName: getString('car_name', 4),
+      batteryCapacityKwh: getDouble('battery_capacity_kwh', 5),
+      maxRangeKm: getDouble('max_range_km', 6),
+      vehicleWeightKg: getDouble('vehicle_weight_kg', 7),
+      motorPowerKw: getDouble('motor_power_kw', 8),
+      runningMode: getInt('running_mode', 9),
+      tripDistanceKm: getDouble('trip_distance_km', 10),
+      tripDurationHr: getDouble('trip_duration_hr', 11),
+      incomeGenerated: getDouble('income_generated', 12),
+      avgSpeedKmph: getDouble('avg_speed_kmph', 13),
+      maxSpeedKmph: getDouble('max_speed_kmph', 14),
+      overspeedEvents: getInt('overspeed_events', 15),
+      hardBrakingEvents: getInt('hard_braking_events', 16),
+      rapidAccelerationEvents: getInt('rapid_acceleration_events', 17),
+      idleTimeMinutes: getDouble('idle_time_minutes', 18),
+      weatherCondition: getString('weather_condition', 19),
+      trafficDensity: getString('traffic_density', 20),
+      ambientTemperature: getDouble('ambient_temperature', 21),
+      socStartPct: getDouble('soc_start_pct', 22),
+      socEndPct: getDouble('soc_end_pct', 23),
+      batteryTemperature: getDouble('battery_temperature', 24),
+      batteryCycles: getInt('battery_cycles', 25),
+      batteryHealthPct: getDouble('battery_health_pct', 26),
+      energyConsumedKwh: getDouble('energy_consumed_kwh', 27),
+      odometerKm: getDouble('odometer_km', 28),
+      brakeWearPct: getDouble('brake_wear_pct', 29),
+      suspensionHealthPct: getDouble('suspension_health_pct', 30),
+      daysSinceLastService: getInt('days_since_last_service', 31),
+      vehicleCondition: getInt('vehicle_condition', 32),
+      vehicleActive: getInt('vehicle_active', 33),
     );
   }
 
   static DateTime _parseDate(String s) {
-    // Handles M/D/YYYY H:MM format
-    final parts = s.split(' ');
-    final dateParts = parts[0].split('/');
-    final timeParts = parts.length > 1 ? parts[1].split(':') : ['0', '0'];
-    return DateTime(
-      int.parse(dateParts[2]),
-      int.parse(dateParts[0]),
-      int.parse(dateParts[1]),
-      int.parse(timeParts[0]),
-      int.parse(timeParts[1]),
-    );
+    try {
+      return DateTime.parse(s);
+    } catch (_) {}
+
+    try {
+      final parts = s.split(' ');
+      final dateParts = parts[0].split('/');
+      final timeParts = parts.length > 1 ? parts[1].split(':') : ['0', '0'];
+      return DateTime(
+        int.parse(dateParts[2]),
+        int.parse(dateParts[0]),
+        int.parse(dateParts[1]),
+        int.parse(timeParts[0]),
+        int.parse(timeParts[1]),
+      );
+    } catch (_) {
+      return DateTime.now();
+    }
   }
 
   double get efficiencyWhPerKm =>
